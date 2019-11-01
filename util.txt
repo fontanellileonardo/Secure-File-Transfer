@@ -1,0 +1,2 @@
+fare make nella directory, 
+poi avviare ./server 3333 e ./client 127.0.0.1 3333.
