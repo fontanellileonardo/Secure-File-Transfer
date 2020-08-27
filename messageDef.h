@@ -21,6 +21,8 @@
 #define MAX_CHAR_INPUT 1024
 //numero massimo di caratteri inseribili per messaggio in una linea senza andare a capo
 
+#define MESSAGE_INVALID_COMMAND "Comando non valido"
+
 #define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !help\n !upload filename\n !download\n !quit\n\n"
 
-#define MESSAGE_USER_COMMAND_DETAILED "\n!help ->visualizza i comandi disponibili\n !upload filename -> upload file chiamato filename sul server\n !download filename -> download filename dal server\n !files -> visualizza i file disponibili e la loro dimensione\n !quit -> disconnette l'utente dal server ed esce\n\n"
+#define MESSAGE_USER_COMMAND_DETAILED "\n!help ->visualizza i comandi disponibili\n !upload filename -> upload file chiamato filename sul server\n !download filename -> download filename dal server\n !list -> visualizza i file disponibili e la loro dimensione\n !quit -> disconnette l'utente dal server ed esce\n\n"

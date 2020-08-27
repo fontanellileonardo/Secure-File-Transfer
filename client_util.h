@@ -11,12 +11,7 @@
 
 #include "messageDef.h"
 
-using namespace std;
-
-void command_available();
 int identifyCommand(char* command);
-void quitClient(int socket);
+void print_available_commands();
 void print_prompt();
-
-
-
+void quitClient(int socket);

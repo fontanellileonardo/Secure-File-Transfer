@@ -17,8 +17,9 @@
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
 
-static size_t CIPHER_SIZE = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
+//static size_t CIPHER_SIZE = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
+/*
 // Va bene anche in c++?
 size_t fsize(FILE* fp) {
 	fseek(fp, 0, SEEK_END);
@@ -51,18 +52,18 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 	uint16_t ufile_len = htons(file_len);
 	send(TCP_socket, &ufile_len, sizeof(uint16_t), 0);
 	//printf("lunghezza file: %zd\n", file_len);
-	cout<<"lunghezza file: "<<file_len<<endl;
+	std::cout<<"lunghezza file: "<<file_len<<std::endl;
 	
 	unsigned char buffer[FRAGM_SIZE];
 	size_t buff_len = sizeof(buffer);
 	//printf("sizeof buffer: %zd\n", buff_len);
-	cout<<"sizeof buffer: "<<buff_len<<endl;
+	std::cout<<"sizeof buffer: "<<buff_len<<std::endl;
 	size_t nread;
 	uint16_t ulen_cipher;
 	for( i = 0; i < (file_len/FRAGM_SIZE); i++){
 		if((nread = fread(buffer, 1, sizeof(buffer), fp)) > 0){
 			//printf("plaintext is: \n");
-			cout<<"plaintext is:"<<endl;
+			std::cout<<"plaintext is:"<<std::endl;
 			BIO_dump_fp(stdout, (const char * ) buffer, buff_len);	
 			EVP_EncryptUpdate(ctx, ciphertext, &len, buffer, buff_len);
 			if(len == 0) {
@@ -71,19 +72,19 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 			}
 			ciphertext_len += len;
 			//printf(" ciphertext_len : %i,  byte criptati a questa iterazione: %i\n",ciphertext_len, len);
-			cout<<"ciphertext_len"<<ciphertext_len<<",byte criptati a questa iterazione: "<<len<<endl;
+			std::cout<<"ciphertext_len"<<ciphertext_len<<",byte criptati a questa iterazione: "<<len<<std::endl;
 			//printf("invio %zd\n", len);
 			ulen_cipher = htons((size_t)len);
 			send(TCP_socket, &ulen_cipher, sizeof(uint16_t), 0);
 			send(TCP_socket, ciphertext, len, 0);		
 			//printf("ciphertext is: \n");
-			cout<<"ciphertext is: "<<endl;
+			std::cout<<"ciphertext is: "<<std::endl;
 			BIO_dump_fp(stdout, (const char * ) ciphertext, len);	
 			//printf("\n\n");
-			cout<<endl<<endl;
+			std::cout<<std::endl<<std::endl;
 		}
 		else {
-			cout<<"errore fread"<<endl;
+			std::cout<<"errore fread"<<std::endl;
 			//printf("errore fread\n");
 			exit(1);
 		}					
@@ -100,7 +101,7 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 	//finalize encrypt and adds the padding
 	if( 1 != EVP_EncryptFinal(ctx, &ciphertext[index], &len)) {
 		//printf("errore encr final, valore di len: %zd\n",len);
-		cout<<"errore encr final, valore di len: "<<len<<endl;
+		std::cout<<"errore encr final, valore di len: "<<len<<std::endl;
 		exit(1);
 	}	
 	ciphertext_len +=len;
@@ -132,23 +133,33 @@ void encrypt(int TCP_socket){
 	encryptAndSendFile(fp,ssst, key, iv, ciphertext, TCP_socket);
 	
 }
+*/
 
 int main(int argc, char* argv[]){
 	
 	int TCP_socket;
 	struct sockaddr_in sv_addr;
-	int message_type;
+	//int message_type;
 	int user_quit;
 	// size_t or uint32_t?
-	uint32_t umessage_type;			
+	uint32_t message_type, message_type_n;
 	int command;
 	char buffer[MAX_COMMAND_INPUT];
-	int ris;
+	//int ris;
 	// ad indicare che non e'  registrato	
-	int user_count = -1;	
-	if(argc < 2){
-		cout<<"parametri input errati : sono necessari ip_server, port_server"<<endl;
+	//int user_count = -1;	
+	
+	//controllo che ci siano tutti i parametri necessari
+	if(argc != 3){
+		std::cout<<"parametri input errati : sono necessari ip_server, port_server"<<std::endl;
 		//printf("parametri input errati : sono necessari ip_server, port_server\n");
+		return 1;
+	}
+	
+	// Controllo che la porta sia valida
+	int server_port = atoi(argv[2]);
+	if(server_port < 1 || server_port > USHRT_MAX){
+		std::cout << "Errore: Porta non valida" << std::endl;
 		return 1;
 	}
 	
@@ -161,56 +172,69 @@ int main(int argc, char* argv[]){
 	// to catch input keyboard command.
 	FD_SET(fileno(stdin), &master);	
 	
-	memset(&sv_addr, 0, sizeof(sv_addr));
+	// Creazione dell'indirizzo del server
+	memset(&sv_addr, 0, sizeof(sv_addr));//TODO: valutare se è pericolosa
 	sv_addr.sin_family = AF_INET;
-	sv_addr.sin_port = htons(atoi(argv[argc-1]));
-	// modifica
-	inet_pton(AF_INET, argv[argc-2], &sv_addr.sin_addr);	
+	sv_addr.sin_port = htons(server_port);
+	
+	// Imposto l'indirizzo IP del server
+	if(inet_pton(AF_INET, argv[1], &sv_addr.sin_addr) < 1){
+		std::cout << "Indirizzo IP del server non valido, errore: " << errno << std::endl;
+	}
+	
+	// Creazione del socket
 	if((TCP_socket = socket(AF_INET, SOCK_STREAM, 0))<0){
 		//printf("errore creazione socket tcp, err:#%d\n", errno);
-		cerr<<"errore creazione socket tcp, err: #"<<errno<<endl;
+		std::cerr<<"errore creazione socket tcp, err: #"<<errno<<std::endl;
 		exit(5);
 	}
+	
+	// Connessione del socket
 	if(connect(TCP_socket, (struct sockaddr*)&sv_addr, sizeof(sv_addr))<0){
 		//printf("impossibile connettersi al server, err: #%d\n", errno);
-		cerr<<"impossibile connettersi al server, err: #"<<errno<<endl;
+		std::cerr<<"impossibile connettersi al server, err: #"<<errno<<std::endl;
 		exit(6);
 	}
+	
 	// from here All the communications must be confidential,
 	// authenticated, and replay-protected.
 	// develop a function that takes in input socket, and parameters standardized
 	// and change every recv procedure with that.
-	recv(TCP_socket, &umessage_type, sizeof(uint32_t), 0);
-	message_type = ntohl(umessage_type);
+	
+	// Controllo che il server abbia accettato la connessione
+	recv(TCP_socket, &message_type_n, sizeof(uint32_t), 0);
+	message_type = ntohl(message_type_n);
 	if(message_type == MESSAGE_FULL){
-		cout<<"massimo numero di utenti connessi, riprovare piu' tardi"<<endl;
+		std::cout<<"massimo numero di utenti connessi, riprovare piu' tardi"<<std::endl;
 		//printf("massimo numero di utenti connessi, riprovare piu' tardi\n");
 		exit(7);
 	}
+	
+	// Aggiungo il socket al set
 	FD_SET(TCP_socket, &master);
 	//printf("connesso al server\n");
-	cout<<"connesso al server"<<endl;
+	std::cout<<"connesso al server"<<std::endl;
+	
 	user_quit = 0;
-	command_available();	
+	print_available_commands();	
 	while(user_quit == 0){
-		read_fds = master;		 
+		read_fds = master;
 		int fdmax = (fileno(stdin) > TCP_socket)? fileno(stdin) : TCP_socket;		
 		print_prompt();
-		select(fdmax+1, &read_fds, NULL, NULL, NULL);		
-		//input da terminale
-		if(FD_ISSET(fileno(stdin), &read_fds)){			
+		select(fdmax+1, &read_fds, NULL, NULL, NULL);
+		if(FD_ISSET(fileno(stdin), &read_fds)){//input da terminale
 			// controllare come prendere byte da tastiera
 			// SLIDE 11-12 SECURECODING
 			//fgets(buffer, sizeof(buffer), stdin);	
-			cin>>buffer;		
+			std::cin>>buffer;		
   		   	command = identifyCommand(buffer);
 			switch(command){
 				case COMMAND_HELP:
-					cout<<MESSAGE_USER_COMMAND_DETAILED<<endl;
+					std::cout<<MESSAGE_USER_COMMAND_DETAILED<<std::endl;
 					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
 					break;					
 				case COMMAND_FILELIST:
-					cout<<"Contatto il server..."<<endl;
+					std::cout<<"Contatto il server..."<<std::endl;
 					//printf("Contatto il server...\n");
 					//modificare con struct file
 					//struct users all_user[MAX_USER_CONNECTED];					
@@ -219,20 +243,21 @@ int main(int argc, char* argv[]){
 				case COMMAND_UPLOAD:	
 					break;						
 				case COMMAND_DOWNLOAD:
-					encrypt(TCP_socket);
+					//encrypt(TCP_socket);
 					break;
 				case COMMAND_QUIT:
 					quitClient(TCP_socket);
 					close(TCP_socket);
 					return 0;
 				default:
+					std::cout << MESSAGE_INVALID_COMMAND << std::endl;
 					break;
 			}
 		}
 		
-		if(FD_ISSET(TCP_socket, &read_fds)){
+		if(FD_ISSET(TCP_socket, &read_fds)){// Input dalla rete
 		//il server si e' disconnesso
-			cout<<"Ci sono problemi con il server, ci scusiamo per il disagio"<<endl;
+			std::cout<<"Ci sono problemi con il server, ci scusiamo per il disagio"<<std::endl;
 			//printf("\nCi sono problemi con il server, ci scusiamo per il disagio\n");
 			return 0;
 		}

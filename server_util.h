@@ -18,6 +18,4 @@
 
 #include "messageDef.h"
 
-using namespace std;
-
 void quitClient(int socket, fd_set* master);
