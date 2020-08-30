@@ -5,6 +5,8 @@
 #define COMMAND_QUIT 5
 #define COMMAND_INVALID 6
 
+#define HANDSHAKE_1 100
+
 
 #define MESSAGE_STORED_END 15
 #define MESSAGE_INCOMING 17
@@ -26,3 +28,5 @@
 #define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !help\n !upload filename\n !download\n !quit\n\n"
 
 #define MESSAGE_USER_COMMAND_DETAILED "\n!help ->visualizza i comandi disponibili\n !upload filename -> upload file chiamato filename sul server\n !download filename -> download filename dal server\n !list -> visualizza i file disponibili e la loro dimensione\n !quit -> disconnette l'utente dal server ed esce\n\n"
+
+#define CLIENT_CERTIFICATE_FILENAME "cas_dir/newcerts/01.pem"

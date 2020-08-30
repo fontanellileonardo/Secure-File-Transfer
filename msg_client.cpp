@@ -10,6 +10,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/hmac.h>
+#include <openssl/x509.h>
 #include <fstream>
 
 #include "client_util.h"
@@ -141,8 +142,8 @@ int main(int argc, char* argv[]){
 	struct sockaddr_in sv_addr;
 	//int message_type;
 	int user_quit;
-	// size_t or uint32_t?
-	uint32_t message_type, message_type_n;
+	size_t buflen, buflen_n;
+	uint8_t message_type;
 	int command;
 	char buffer[MAX_COMMAND_INPUT];
 	//int ris;
@@ -196,14 +197,8 @@ int main(int argc, char* argv[]){
 		exit(6);
 	}
 	
-	// from here All the communications must be confidential,
-	// authenticated, and replay-protected.
-	// develop a function that takes in input socket, and parameters standardized
-	// and change every recv procedure with that.
-	
 	// Controllo che il server abbia accettato la connessione
-	recv(TCP_socket, &message_type_n, sizeof(uint32_t), 0);
-	message_type = ntohl(message_type_n);
+	recv(TCP_socket, &message_type, sizeof(message_type), 0);
 	if(message_type == MESSAGE_FULL){
 		std::cout<<"massimo numero di utenti connessi, riprovare piu' tardi"<<std::endl;
 		//printf("massimo numero di utenti connessi, riprovare piu' tardi\n");
@@ -214,6 +209,45 @@ int main(int argc, char* argv[]){
 	FD_SET(TCP_socket, &master);
 	//printf("connesso al server\n");
 	std::cout<<"connesso al server"<<std::endl;
+	
+	// from here All the communications must be confidential,
+	// authenticated, and replay-protected.
+	// develop a function that takes in input socket, and parameters standardized
+	// and change every recv procedure with that.
+	
+	// Leggo il certificato del client
+	X509* client_certificate = NULL;
+	if(load_cert(CLIENT_CERTIFICATE_FILENAME, &client_certificate) < 0){
+		std::cerr << "Errore durante il caricamento del certificato" << std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	X509_NAME* abc = X509_get_subject_name(client_certificate);
+	char* temp_buffer = X509_NAME_oneline(abc, NULL, 0);
+	std::cout << "Certificato:" << temp_buffer << std::endl;
+	// /Debug
+	
+	// Serializzo il certificato del client
+	size_t cert_size;
+	unsigned char* cert_buffer = NULL;
+	cert_size = i2d_X509(client_certificate, &cert_buffer);
+	if(cert_size < 0){
+		std::cerr<<"Errore nella serializzazione del certificato"<<std::endl;
+		exit(-1);
+	}
+	
+	// Invio il certificato serializzato, preceduto dal byte che indica il tipo di messaggio
+	message_type = HANDSHAKE_1;
+	send(TCP_socket, &message_type, sizeof(message_type), 0);
+	
+	buflen_n = htonl(cert_size);
+	send(TCP_socket, &buflen_n, sizeof(buflen_n), 0);
+	
+	if(send_data(TCP_socket, (const char*)cert_buffer, cert_size) < 0){
+		std::cerr<<"Errore durante l'invio del certificato"<<std::endl;
+		exit(-1);
+	}
 	
 	user_quit = 0;
 	print_available_commands();	

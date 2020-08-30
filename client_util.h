@@ -1,4 +1,6 @@
 #include <iostream>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/select.h>
@@ -12,6 +14,8 @@
 #include "messageDef.h"
 
 int identifyCommand(char* command);
+int load_cert(std::string filename, X509** cert);
 void print_available_commands();
 void print_prompt();
 void quitClient(int socket);
+int send_data(unsigned int fd, const char* buffer, size_t buflen);

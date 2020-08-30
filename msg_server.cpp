@@ -225,7 +225,7 @@ int main(int argc, char *argv[]){
 					
 					// Controllo il numero di utenti connessi
 					connected_user_number++;
-					uint32_t message_type, message_type_n;
+					uint8_t message_type;
 					if(connected_user_number > MAX_USER_CONNECTED){
 						message_type = MESSAGE_FULL;
 						std::cout << "Numero massimo utenti raggiunto" << std::endl;
@@ -235,8 +235,7 @@ int main(int argc, char *argv[]){
 						std::cout << "Nuovo utente connesso" << std::endl;
 					}
 					
-					message_type_n = htonl(message_type);
-					send(newfd, &message_type_n, sizeof(uint32_t), 0);
+					send(newfd, &message_type, sizeof(message_type), 0);
 					
 					if(connected_user_number > MAX_USER_CONNECTED){
 						close(newfd);
@@ -245,19 +244,55 @@ int main(int argc, char *argv[]){
 					}
 				}
 				else{// Richiesta da client già connesso
-					uint32_t message_type_n, message_type;
+					size_t buflen;
+					char* input_buffer = NULL;
+					char* temp_buffer = NULL;
+					//char input_buffer[512];
+					uint8_t message_type;
 					
-					// Se client disconnesso gestisci disconnessione
-					if(recv(i, &message_type_n, sizeof(uint32_t), 0) <= 0){
+					// Ricevo comando
+					if(recv(i, &message_type, sizeof(message_type), 0) <= 0){
 						quitClient(i, &master);
 						connected_user_number--;
 						std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
 						//printf("user disconnesso senza !quit, verra' messo offline\n");
 						continue; //passi al prossimo pronto
 					}
+					
 					fflush(stdout);//TODO: a cosa serve?
-					message_type = ntohl(message_type_n);						
+					
+					X509* client_certificate = NULL;
+					X509_NAME* abc = NULL;
 					switch(message_type){
+						case HANDSHAKE_1:
+							std::cout << "Handshake fase 1" << std::endl;
+							// Ricevo i dati in ingresso
+							if(receive_data(i, &input_buffer, &buflen) < 0){
+								quitClient(i, &master);
+								connected_user_number--;
+								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
+								//printf("user disconnesso senza !quit, verra' messo offline\n");
+							}
+							
+							// Deserializzo il certificato del client appena ricevuto
+							// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
+							temp_buffer = input_buffer;
+							client_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer, buflen);
+							if(client_certificate == NULL){
+								std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
+								exit(-1);
+							}
+							
+							// Dealloco il buffer allocato nella funzione receive_data(...)
+							delete[] input_buffer;
+							input_buffer = NULL;
+							
+							//  Debug
+							abc = X509_get_subject_name(client_certificate);
+							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
+							std::cout << "Certificato:" << temp_buffer << std::endl;
+							// /Debug
+							break;
 						case COMMAND_FILELIST:
 							//TODO: implementare funzionalità
 							break;
