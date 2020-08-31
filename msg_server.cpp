@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "server_util.h"
+#include "common_util.h"
 
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
@@ -137,6 +138,7 @@ void decrypt(int TCP_socket){
 */
 
 int main(int argc, char *argv[]){
+	Session client = Session(0);
 	
 	// File descriptor e il "contatore" di socket
 	fd_set master;
@@ -266,7 +268,7 @@ int main(int argc, char *argv[]){
 					switch(message_type){
 						case HANDSHAKE_1:
 							std::cout << "Handshake fase 1" << std::endl;
-							// Ricevo i dati in ingresso
+							// Ricevo i dati in ingresso (certificato)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								quitClient(i, &master);
 								connected_user_number--;
@@ -292,6 +294,24 @@ int main(int argc, char *argv[]){
 							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
 							std::cout << "Certificato:" << temp_buffer << std::endl;
 							// /Debug
+							
+							// Ricevo i dati in ingresso (nonce)
+							if(receive_data(i, &input_buffer, &buflen) < 0){
+								quitClient(i, &master);
+								connected_user_number--;
+								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
+								//printf("user disconnesso senza !quit, verra' messo offline\n");
+							}
+							
+							//  Debug
+							client.store_counterpart_nonce(*((uint32_t*)input_buffer));
+							std::cout << "Client nonce: " << client.get_counterpart_nonce() << std::endl;
+							// /Debug
+							
+							// Dealloco il buffer allocato nella funzione receive_data(...)
+							delete[] input_buffer;
+							input_buffer = NULL;
+							
 							break;
 						case COMMAND_FILELIST:
 							//TODO: implementare funzionalità

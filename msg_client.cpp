@@ -14,6 +14,7 @@
 #include <fstream>
 
 #include "client_util.h"
+#include "common_util.h"
 
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
@@ -189,6 +190,7 @@ int main(int argc, char* argv[]){
 		std::cerr<<"errore creazione socket tcp, err: #"<<errno<<std::endl;
 		exit(5);
 	}
+	Session session = Session(0);
 	
 	// Connessione del socket
 	if(connect(TCP_socket, (struct sockaddr*)&sv_addr, sizeof(sv_addr))<0){
@@ -237,15 +239,23 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	// Invio il certificato serializzato, preceduto dal byte che indica il tipo di messaggio
+	// Invio il certificato serializzato e il nonce, preceduti dal byte che indica il tipo di messaggio
 	message_type = HANDSHAKE_1;
 	send(TCP_socket, &message_type, sizeof(message_type), 0);
 	
-	buflen_n = htonl(cert_size);
-	send(TCP_socket, &buflen_n, sizeof(buflen_n), 0);
-	
+	// Invio il certificato
 	if(send_data(TCP_socket, (const char*)cert_buffer, cert_size) < 0){
 		std::cerr<<"Errore durante l'invio del certificato"<<std::endl;
+		exit(-1);
+	}
+	delete[] cert_buffer;
+	cert_buffer = NULL;
+	
+	
+	// Invio il nonce
+	uint32_t nonce_buffer = session.get_my_nonce();
+	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
+		std::cerr<<"Errore durante l'invio del nonce"<<std::endl;
 		exit(-1);
 	}
 	
