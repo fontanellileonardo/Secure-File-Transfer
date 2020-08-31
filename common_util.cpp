@@ -1,6 +1,6 @@
 #include "common_util.h"
 
-Session::Session(int fd){
+Session::Session(unsigned int fd){
 	this->fd = fd;//TODO: da usare al posto di TCP_socket
 	my_nonce = 9;//TODO: generarlo casualmente
 	counterpart_nonce = 0;
@@ -8,6 +8,10 @@ Session::Session(int fd){
 
 uint32_t Session::get_counterpart_nonce(){
 	return counterpart_nonce++;
+}
+
+unsigned int Session::get_fd(){
+	return fd;
 }
 
 uint32_t Session::get_my_nonce(){

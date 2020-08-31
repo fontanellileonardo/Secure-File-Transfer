@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 
 #include "server_util.h"
 #include "common_util.h"
@@ -137,8 +138,17 @@ void decrypt(int TCP_socket){
 }
 */
 
+std::vector<Session*> clients;
+
+Session *get_client_by_fd(unsigned int fd){
+	for(auto i = clients.begin(); i != clients.end(); i++){
+		if((*i)->get_fd() == fd)
+			return *i;
+	}
+	return NULL;
+}
+
 int main(int argc, char *argv[]){
-	Session client = Session(0);
 	
 	// File descriptor e il "contatore" di socket
 	fd_set master;
@@ -244,6 +254,13 @@ int main(int argc, char *argv[]){
 						FD_CLR(newfd, &master);
 						connected_user_number--;
 					}
+					else{
+						Session *client = new Session(newfd);
+						clients.push_back(client);
+						
+						for(auto i = clients.begin(); i != clients.end(); i++)
+							std::cout << "client fd " << (*i)->get_fd() << std::endl;
+					}
 				}
 				else{// Richiesta da client già connesso
 					size_t buflen;
@@ -251,6 +268,9 @@ int main(int argc, char *argv[]){
 					char* temp_buffer = NULL;
 					//char input_buffer[512];
 					uint8_t message_type;
+					
+					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
+					Session *client = get_client_by_fd(i);
 					
 					// Ricevo comando
 					if(recv(i, &message_type, sizeof(message_type), 0) <= 0){
@@ -304,8 +324,8 @@ int main(int argc, char *argv[]){
 							}
 							
 							//  Debug
-							client.store_counterpart_nonce(*((uint32_t*)input_buffer));
-							std::cout << "Client nonce: " << client.get_counterpart_nonce() << std::endl;
+							client->store_counterpart_nonce(*((uint32_t*)input_buffer));
+							std::cout << "Client nonce: " << client->get_counterpart_nonce() << std::endl;
 							// /Debug
 							
 							// Dealloco il buffer allocato nella funzione receive_data(...)
