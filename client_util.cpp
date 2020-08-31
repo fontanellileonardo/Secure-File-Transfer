@@ -14,20 +14,6 @@ int identifyCommand(char* command){
 	return COMMAND_INVALID;
 }
 
-//Carica il certificato come file .pem
-int load_cert(std::string filename, X509** cert){
-	FILE* file = fopen(filename.c_str(), "r");
-	if(!file){
-		return -1;
-	}
-	*cert = PEM_read_X509(file, NULL, NULL, NULL);
-	if(!cert){
-		return -1;
-	}
-	fclose(file);
-	return 0;
-}
-
 //funzione che stampa a video i comandi disponibili per l'utente
 void print_available_commands(){
 	//printf("%s",MESSAGE_USER_COMMAND);

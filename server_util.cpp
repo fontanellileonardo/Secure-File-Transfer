@@ -1,20 +1,18 @@
 #include "server_util.h"
 
 //Carica il file CRL
-/*
-int load_crl(string filename, X509_CRL * crl){
+int load_crl(std::string filename, X509_CRL** crl){
 	FILE* file = fopen(filename.c_str(), "r");
 	if(!file){
 		return -1;
 	}
-	crl = PEM_read_X509_CRL(file, NULL, NULL, NULL);
+	*crl = PEM_read_X509_CRL(file, NULL, NULL, NULL);
 	if(!crl){
 		return -1;
 	}
 	fclose(file);
 	return 0;
 }
-*/
 
 // Alloca un nuovo buffer e vi inserisce i dati ricevuti.
 // Deallocare sempre il buffer non appena i dati in esso contenuti non servono più
@@ -47,13 +45,4 @@ int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
 		received += ret;
 	}
 	return 0;
-}
-
-//pone l'utente in stato offline e chiude la connessione tcp
-void quitClient(int socket, fd_set* master){
-	
-	close(socket);//TODO: vedere se conviene chiudere sul server o sul client
-	FD_CLR(socket, master);
-
-	return;	
 }

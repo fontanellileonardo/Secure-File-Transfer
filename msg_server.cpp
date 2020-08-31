@@ -148,6 +148,48 @@ Session *get_client_by_fd(unsigned int fd){
 	return NULL;
 }
 
+//pone l'utente in stato offline e chiude la connessione tcp
+void quit_client(unsigned int socket, fd_set* master){
+	close(socket);
+	FD_CLR(socket, master);
+	
+	// Elimino la struttura corrispondente al client appena disconnesso
+	for(auto i = clients.begin(); i != clients.end(); i++){
+		if((*i)->get_fd() == socket){
+			clients.erase(i);
+			break;
+		}
+	}
+	
+	connected_user_number--;
+	
+	return;	
+}
+
+int verify_cert(X509_STORE *store, X509 *cert){
+	X509_STORE_CTX* cert_ctx = X509_STORE_CTX_new();
+	if(cert_ctx == NULL){
+		std::cerr << "Errore nella creazione dello store context" << std::endl;
+		X509_STORE_CTX_free(cert_ctx);
+		return -1;
+	}
+	
+	if(X509_STORE_CTX_init(cert_ctx, store, cert, NULL) != 1){
+		std::cerr << "Errore durente l'inizializzazione dello store context" << std::endl;
+		X509_STORE_CTX_free(cert_ctx);
+		return -1;
+	}
+	
+	if(X509_verify_cert(cert_ctx) != 1) {
+		std::cout << "Certificato del client non valido" << std::endl;
+		X509_STORE_CTX_free(cert_ctx);
+		return 0;
+	}
+	
+	X509_STORE_CTX_free(cert_ctx);
+	return 1;
+}
+
 int main(int argc, char *argv[]){
 	
 	// File descriptor e il "contatore" di socket
@@ -179,6 +221,31 @@ int main(int argc, char *argv[]){
 		std::cout << "Errore: Porta non valida" << std::endl;
 		return 1;
 	}
+	
+	//===== Creazione store =====
+	
+	// Leggo il certificato CA
+	X509* CA_cert = NULL;
+	if(load_cert(CA_CERTIFICATE_FILENAME, &CA_cert) < 0){
+		std::cerr << "Errore durante il caricamento del certificato CA" << std::endl;
+		exit(-1);
+	}
+	
+	// Leggo il CRL
+	X509_CRL* crl = NULL;
+	if(load_crl(CRL_FILENAME, &crl) < 0){
+		std::cerr << "Errore durante il caricamento del CRL" << std::endl;
+		exit(-1);
+	}
+	
+	// Creazione dello store dei certificati
+	X509_STORE* store = NULL;
+	if(create_store(&store, CA_cert, crl) < 0){
+		std::cerr << "Errore durante la creazioni dello store" << std::endl;
+		exit(-1);
+	}
+	
+	//===== Creazione socket =====
 	
 	// Creazione del socket principale
 	if((listener = socket(AF_INET, SOCK_STREAM, 0)) < 0){
@@ -255,11 +322,14 @@ int main(int argc, char *argv[]){
 						connected_user_number--;
 					}
 					else{
+						// Aggiungo un nuovo elemento alla struttura contenente le info sui client connessi
 						Session *client = new Session(newfd);
 						clients.push_back(client);
 						
+						//  Debug
 						for(auto i = clients.begin(); i != clients.end(); i++)
 							std::cout << "client fd " << (*i)->get_fd() << std::endl;
+						// /Debug
 					}
 				}
 				else{// Richiesta da client già connesso
@@ -268,14 +338,14 @@ int main(int argc, char *argv[]){
 					char* temp_buffer = NULL;
 					//char input_buffer[512];
 					uint8_t message_type;
+					int ret;
 					
 					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
 					Session *client = get_client_by_fd(i);
 					
 					// Ricevo comando
 					if(recv(i, &message_type, sizeof(message_type), 0) <= 0){
-						quitClient(i, &master);
-						connected_user_number--;
+						quit_client(i, &master);
 						std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
 						//printf("user disconnesso senza !quit, verra' messo offline\n");
 						continue; //passi al prossimo pronto
@@ -290,10 +360,10 @@ int main(int argc, char *argv[]){
 							std::cout << "Handshake fase 1" << std::endl;
 							// Ricevo i dati in ingresso (certificato)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
-								quitClient(i, &master);
-								connected_user_number--;
+								quit_client(i, &master);
 								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
 								//printf("user disconnesso senza !quit, verra' messo offline\n");
+								continue;
 							}
 							
 							// Deserializzo il certificato del client appena ricevuto
@@ -315,12 +385,22 @@ int main(int argc, char *argv[]){
 							std::cout << "Certificato:" << temp_buffer << std::endl;
 							// /Debug
 							
+							// Verifico il certificato
+							ret = verify_cert(store, client_certificate);
+							if(ret < 0){// Errore interno durante la verifica
+								exit(-1);
+							}
+							if(ret == 0){// Certificato non valido
+								quit_client(i, &master);
+								continue;
+							}
+							
 							// Ricevo i dati in ingresso (nonce)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
-								quitClient(i, &master);
-								connected_user_number--;
+								quit_client(i, &master);
 								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
 								//printf("user disconnesso senza !quit, verra' messo offline\n");
+								continue;
 							}
 							
 							//  Debug
@@ -333,6 +413,7 @@ int main(int argc, char *argv[]){
 							input_buffer = NULL;
 							
 							break;
+							
 						case COMMAND_FILELIST:
 							//TODO: implementare funzionalità
 							break;
@@ -343,8 +424,7 @@ int main(int argc, char *argv[]){
 							//TODO: implementare funzionalità	
 							break;
 						case COMMAND_QUIT:
-							quitClient(i, &master);
-							connected_user_number--;
+							quit_client(i, &master);
 							break;
 						default:
 							std::cout<<"errore nella comunicazione con il client"<<std::endl;
@@ -355,6 +435,8 @@ int main(int argc, char *argv[]){
 			}// if
 		}// for
 	}// while
+	
+	X509_STORE_free(store);
 	
 	std::cout << "Server terminato";
 	return 0;

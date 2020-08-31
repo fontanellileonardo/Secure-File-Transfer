@@ -10,6 +10,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/hmac.h>
+#include <openssl/pem.h>
 #include <openssl/x509.h>
 
 #include <netinet/in.h>
@@ -20,5 +21,6 @@
 #include "messageDef.h"
 
 //void load_crl(string filename, X509_CRL * crl);
+int load_crl(std::string filename, X509_CRL** crl);
 void quitClient(int socket, fd_set* master);
 int receive_data(unsigned int fd, char** input_buffer, size_t* buflen);

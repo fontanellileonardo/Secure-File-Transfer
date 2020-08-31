@@ -1,4 +1,8 @@
+#include <iostream>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
 #include <stdint.h>
+#include <string.h>
 
 
 class Session{
@@ -19,3 +23,6 @@ class Session{
 		// Salva il numero di sequenza della controparte
 		void store_counterpart_nonce(uint32_t nonce);
 };
+
+int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl);
+int load_cert(std::string filename, X509 **cert);

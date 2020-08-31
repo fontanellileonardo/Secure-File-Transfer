@@ -14,7 +14,6 @@
 #include "messageDef.h"
 
 int identifyCommand(char* command);
-int load_cert(std::string filename, X509** cert);
 void print_available_commands();
 void print_prompt();
 void quitClient(int socket);
