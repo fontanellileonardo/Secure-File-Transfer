@@ -167,6 +167,14 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 	
+	//===== Chiave privata =====
+	OpenSSL_add_all_algorithms();
+	EVP_PKEY* prvkey;
+	if(load_private_key(CLIENT_PRVKEY, CLIENT_PRVKEY_PASSWORD, &prvkey) < 0){
+		std::cerr << "Errore durante il caricamento della chiave privata" << std::endl;
+		exit(-1);
+	}
+	
 	//===== Creazione store =====
 	
 	// Leggo il certificato CA
@@ -324,6 +332,18 @@ int main(int argc, char* argv[]){
 	if(ret == 0){// Certificato non valido
 		quitClient(TCP_socket);
 		exit(-1);
+	}
+	
+	// Estraggo la chiave pubblica del server dal certificato
+	EVP_PKEY *server_pubkey = NULL;
+	server_pubkey = X509_get_pubkey(server_certificate);
+	if(server_pubkey == NULL){
+		std::cerr << "Errore durante l'estrazione della chiave pubblica del server" << std::endl;
+		quitClient(TCP_socket);
+		exit(-1);
+	}
+	else{
+		session.set_counterpart_pubkey(server_pubkey);
 	}
 	
 	user_quit = 0;

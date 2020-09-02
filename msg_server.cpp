@@ -196,6 +196,14 @@ int main(int argc, char *argv[]){
 		return 1;
 	}
 	
+	//===== Chiave privata =====
+	OpenSSL_add_all_algorithms();
+	EVP_PKEY* prvkey;
+	if(load_private_key(SERVER_PRVKEY, SERVER_PRVKEY_PASSWORD, &prvkey) < 0){
+		std::cerr << "Errore durante il caricamento della chiave privata" << std::endl;
+		exit(-1);
+	}
+	
 	//===== Creazione store =====
 	
 	// Leggo il certificato CA
@@ -335,6 +343,7 @@ int main(int argc, char *argv[]){
 					X509* client_certificate = NULL;
 					X509* server_certificate = NULL;
 					X509_NAME* abc = NULL;
+					EVP_PKEY *client_pubkey = NULL;
 					switch(message_type){
 						case HANDSHAKE_1:
 							std::cout << "Handshake fase 1" << std::endl;
@@ -375,6 +384,17 @@ int main(int argc, char *argv[]){
 								continue;
 							}
 							
+							// Estraggo la chiave pubblica del client dal certificato
+							client_pubkey = X509_get_pubkey(client_certificate);
+							if(client_pubkey == NULL){
+								std::cerr << "Errore durante l'estrazione della chiave pubblica del client" << std::endl;
+								quit_client(i, &master);
+								continue;
+							}
+							else{
+								client->set_counterpart_pubkey(client_pubkey);
+							}
+							
 							// Ricevo i dati in ingresso (nonce)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								quit_client(i, &master);
@@ -384,7 +404,7 @@ int main(int argc, char *argv[]){
 							}
 							
 							//  Debug
-							client->store_counterpart_nonce(*((uint32_t*)input_buffer));
+							client->set_counterpart_nonce(*((uint32_t*)input_buffer));
 							std::cout << "Client nonce: " << client->get_counterpart_nonce() << std::endl;
 							// /Debug
 							
@@ -450,7 +470,11 @@ int main(int argc, char *argv[]){
 		}// for
 	}// while
 	
+	//Distruggo lo store dei certificati
 	X509_STORE_free(store);
+	
+	//Distruggo la tabella interna degli algoritmi
+	EVP_cleanup();
 	
 	std::cout << "Server terminato";
 	return 0;

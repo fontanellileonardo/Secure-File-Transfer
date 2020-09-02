@@ -18,8 +18,12 @@ uint32_t Session::get_my_nonce(){
 	return my_nonce++;
 }
 
-void Session::store_counterpart_nonce(uint32_t nonce){
+void Session::set_counterpart_nonce(uint32_t nonce){
 	counterpart_nonce = nonce;
+}
+
+void Session::set_counterpart_pubkey(EVP_PKEY *pubkey){
+	counterpart_pubkey = pubkey;
 }
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
@@ -71,6 +75,19 @@ int load_crl(std::string filename, X509_CRL** crl){
 		return -1;
 	}
 	fclose(file);
+	return 0;
+}
+
+int load_private_key(std::string filename, std::string password, EVP_PKEY** prvkey){
+	FILE* file = fopen(filename.c_str(), "r");
+	if(!file){
+		return -1;
+	}
+	*prvkey = PEM_read_PrivateKey(file, NULL, NULL, (void*)password.c_str());
+	fclose(file);
+	if(!(*prvkey)){
+		return -2;
+	}
 	return 0;
 }
 

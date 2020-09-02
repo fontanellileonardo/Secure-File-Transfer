@@ -33,3 +33,9 @@
 #define CLIENT_CERTIFICATE_FILENAME "cas_dir/newcerts/01.pem"
 #define CRL_FILENAME "cas_dir/crl.pem"
 #define SERVER_CERTIFICATE_FILENAME "cas_dir/newcerts/03.pem"
+
+#define SERVER_PRVKEY "certificates/server_prvkey.pem"
+#define SERVER_PRVKEY_PASSWORD "password"
+
+#define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
+#define CLIENT_PRVKEY_PASSWORD "password"
