@@ -1,8 +1,10 @@
 #include <iostream>
 #include <vector>
+#include <unistd.h>
 
-#include "server_util.h"
 #include "common_util.h"
+#include "messageDef.h"
+//#include "server_util.h"
 
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
@@ -166,30 +168,6 @@ void quit_client(unsigned int socket, fd_set* master){
 	return;	
 }
 
-int verify_cert(X509_STORE *store, X509 *cert){
-	X509_STORE_CTX* cert_ctx = X509_STORE_CTX_new();
-	if(cert_ctx == NULL){
-		std::cerr << "Errore nella creazione dello store context" << std::endl;
-		X509_STORE_CTX_free(cert_ctx);
-		return -1;
-	}
-	
-	if(X509_STORE_CTX_init(cert_ctx, store, cert, NULL) != 1){
-		std::cerr << "Errore durente l'inizializzazione dello store context" << std::endl;
-		X509_STORE_CTX_free(cert_ctx);
-		return -1;
-	}
-	
-	if(X509_verify_cert(cert_ctx) != 1) {
-		std::cout << "Certificato del client non valido" << std::endl;
-		X509_STORE_CTX_free(cert_ctx);
-		return 0;
-	}
-	
-	X509_STORE_CTX_free(cert_ctx);
-	return 1;
-}
-
 int main(int argc, char *argv[]){
 	
 	// File descriptor e il "contatore" di socket
@@ -203,10 +181,6 @@ int main(int argc, char *argv[]){
 	
 	unsigned int listener; //descrittore del socket principale
 	unsigned int newfd; //descrittore del socket con nuovo client
-	
-	// Reset FDs
-	FD_ZERO(&master);
-	FD_ZERO(&read_fds);
 	
 	// Controllo che ci siano tutti i parametri necessari
 	if(argc != 2){
@@ -246,6 +220,10 @@ int main(int argc, char *argv[]){
 	}
 	
 	//===== Creazione socket =====
+	
+	// Reset FDs
+	FD_ZERO(&master);
+	FD_ZERO(&read_fds);
 	
 	// Creazione del socket principale
 	if((listener = socket(AF_INET, SOCK_STREAM, 0)) < 0){
@@ -336,6 +314,7 @@ int main(int argc, char *argv[]){
 					size_t buflen;
 					char* input_buffer = NULL;
 					char* temp_buffer = NULL;
+					unsigned char* cert_buffer = NULL;
 					//char input_buffer[512];
 					uint8_t message_type;
 					int ret;
@@ -354,6 +333,7 @@ int main(int argc, char *argv[]){
 					fflush(stdout);//TODO: a cosa serve?
 					
 					X509* client_certificate = NULL;
+					X509* server_certificate = NULL;
 					X509_NAME* abc = NULL;
 					switch(message_type){
 						case HANDSHAKE_1:
@@ -411,6 +391,40 @@ int main(int argc, char *argv[]){
 							// Dealloco il buffer allocato nella funzione receive_data(...)
 							delete[] input_buffer;
 							input_buffer = NULL;
+							
+							//===== PASSO 2 =====
+							
+							// Leggo il certificato del server
+							server_certificate = NULL;
+							if(load_cert(SERVER_CERTIFICATE_FILENAME, &server_certificate) < 0){
+								std::cerr << "Errore durante il caricamento del certificato" << std::endl;
+								exit(-1);
+							}
+							
+							//  Debug
+							abc = X509_get_subject_name(server_certificate);
+							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
+							std::cout << "Certificato:" << temp_buffer << std::endl;
+							// /Debug
+							
+							// Serializzo il certificato del server
+							size_t cert_size;
+							cert_buffer = NULL;
+							cert_size = i2d_X509(server_certificate, &cert_buffer);
+							if(cert_size < 0){
+								std::cerr<<"Errore nella serializzazione del certificato"<<std::endl;
+								exit(-1);
+							}
+							
+							// Invio il certificato
+							if(send_data(i, (const char*)cert_buffer, cert_size) < 0){
+								std::cerr<<"Errore durante l'invio del certificato"<<std::endl;
+								exit(-1);
+							}
+							delete[] cert_buffer;
+							cert_buffer = NULL;
+							
+							std::cout << "Arrivato alla fine" << std::endl;
 							
 							break;
 							

@@ -17,4 +17,3 @@ int identifyCommand(char* command);
 void print_available_commands();
 void print_prompt();
 void quitClient(int socket);
-int send_data(unsigned int fd, const char* buffer, size_t buflen);

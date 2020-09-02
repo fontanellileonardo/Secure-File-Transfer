@@ -32,3 +32,4 @@
 #define CA_CERTIFICATE_FILENAME "cas_dir/ca_cert.pem"
 #define CLIENT_CERTIFICATE_FILENAME "cas_dir/newcerts/01.pem"
 #define CRL_FILENAME "cas_dir/crl.pem"
+#define SERVER_CERTIFICATE_FILENAME "cas_dir/newcerts/03.pem"

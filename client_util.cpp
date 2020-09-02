@@ -39,21 +39,3 @@ void quitClient(int socket){
 	
 	return;
 }
-
-int send_data(unsigned int fd, const char* buffer, size_t buflen){
-	size_t sent = 0;
-	ssize_t ret;
-	
-	size_t buflen_n = htonl(buflen);
-	send(fd, &buflen_n, sizeof(buflen_n), 0);
-	
-	while(sent < buflen){
-		ret = send(fd, buffer + sent, buflen - sent, 0);
-		std::cout << "Inviati: " << ret << " byte" << std::endl;
-		if(ret < 0){
-			return -1;
-		} 
-		sent += ret;
-	}
-	return (sent == buflen)?0:(-1);
-}

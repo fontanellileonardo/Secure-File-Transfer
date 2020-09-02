@@ -144,9 +144,11 @@ int main(int argc, char* argv[]){
 	//int message_type;
 	int user_quit;
 	size_t buflen, buflen_n;
+	char* input_buffer = NULL;
 	uint8_t message_type;
 	int command;
 	char buffer[MAX_COMMAND_INPUT];
+	int ret;
 	//int ris;
 	// ad indicare che non e'  registrato	
 	//int user_count = -1;	
@@ -164,6 +166,31 @@ int main(int argc, char* argv[]){
 		std::cout << "Errore: Porta non valida" << std::endl;
 		return 1;
 	}
+	
+	//===== Creazione store =====
+	
+	// Leggo il certificato CA
+	X509* CA_cert = NULL;
+	if(load_cert(CA_CERTIFICATE_FILENAME, &CA_cert) < 0){
+		std::cerr << "Errore durante il caricamento del certificato CA" << std::endl;
+		exit(-1);
+	}
+	
+	// Leggo il CRL
+	X509_CRL* crl = NULL;
+	if(load_crl(CRL_FILENAME, &crl) < 0){
+		std::cerr << "Errore durante il caricamento del CRL" << std::endl;
+		exit(-1);
+	}
+	
+	// Creazione dello store dei certificati
+	X509_STORE* store = NULL;
+	if(create_store(&store, CA_cert, crl) < 0){
+		std::cerr << "Errore durante la creazioni dello store" << std::endl;
+		exit(-1);
+	}
+	
+	//===== Creazione socket =====
 	
 	fd_set master;
 	fd_set read_fds;
@@ -212,10 +239,7 @@ int main(int argc, char* argv[]){
 	//printf("connesso al server\n");
 	std::cout<<"connesso al server"<<std::endl;
 	
-	// from here All the communications must be confidential,
-	// authenticated, and replay-protected.
-	// develop a function that takes in input socket, and parameters standardized
-	// and change every recv procedure with that.
+	//===== HANDSHAKE - PASSO 1 =====
 	
 	// Leggo il certificato del client
 	X509* client_certificate = NULL;
@@ -227,7 +251,7 @@ int main(int argc, char* argv[]){
 	//  Debug
 	X509_NAME* abc = X509_get_subject_name(client_certificate);
 	char* temp_buffer = X509_NAME_oneline(abc, NULL, 0);
-	std::cout << "Certificato:" << temp_buffer << std::endl;
+	std::cout << "Certificato client:" << temp_buffer << std::endl;
 	// /Debug
 	
 	// Serializzo il certificato del client
@@ -251,11 +275,54 @@ int main(int argc, char* argv[]){
 	delete[] cert_buffer;
 	cert_buffer = NULL;
 	
+	// Recupero il nonce
+	uint32_t nonce_buffer = session.get_my_nonce();
+	if(nonce_buffer == UINT32_MAX){
+		quitClient(TCP_socket);//TODO: chiudere correttamente il client in tutti i casi di errore
+		close(TCP_socket);
+		exit(-1);
+	}
 	
 	// Invio il nonce
-	uint32_t nonce_buffer = session.get_my_nonce();
 	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
 		std::cerr<<"Errore durante l'invio del nonce"<<std::endl;
+		exit(-1);
+	}
+	
+	//===== PASSO 2 =====
+	
+	// Ricevo i dati in ingresso (certificato)
+	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione del certificato del server" << std::endl;
+		exit(-1);
+	}
+	
+	// Deserializzo il certificato del server appena ricevuto
+	// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
+	temp_buffer = input_buffer;
+	X509* server_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer, buflen);
+	if(server_certificate == NULL){
+		std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
+		exit(-1);
+	}
+	
+	// Dealloco il buffer allocato nella funzione receive_data(...)
+	delete[] input_buffer;
+	input_buffer = NULL;
+	
+	//  Debug
+	abc = X509_get_subject_name(server_certificate);
+	temp_buffer = X509_NAME_oneline(abc, NULL, 0);
+	std::cout << "Certificato server:" << temp_buffer << std::endl;
+	// /Debug
+	
+	// Verifico il certificato
+	ret = verify_cert(store, server_certificate);
+	if(ret < 0){// Errore interno durante la verifica
+		exit(-1);
+	}
+	if(ret == 0){// Certificato non valido
+		quitClient(TCP_socket);
 		exit(-1);
 	}
 	
