@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <iostream>
 #include <openssl/pem.h>
+#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <stdint.h>
 #include <string.h>
@@ -11,11 +12,15 @@ class Session{
 	private:
 		int fd;
 		uint32_t counterpart_nonce;
-		uint32_t my_nonce;
 		EVP_PKEY* counterpart_pubkey;
+		char* iv;
+		char* key_encr;
+		char* key_auth;
+		uint32_t my_nonce;
 
 	public:
 		Session(unsigned int fd);
+		~Session();
 		
 		// Restituisce il numero di sequenza della controparte
 		uint32_t get_counterpart_nonce();
@@ -23,6 +28,8 @@ class Session{
 		unsigned int get_fd();
 		// Restituisce il mio numero di sequenza
 		uint32_t get_my_nonce();
+		// Inizializza iv, key_encr e key_auth con byte pseudocasuali
+		int initialize(const EVP_CIPHER *type);
 		// Salva il numero di sequenza della controparte
 		void set_counterpart_nonce(uint32_t nonce);
 		// Salva la chiave pubblica del server
@@ -30,6 +37,7 @@ class Session{
 };
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl);
+int get_random(char* buffer, size_t buflen);
 int load_cert(std::string filename, X509 **cert);
 int load_crl(std::string filename, X509_CRL** crl);
 int load_private_key(std::string filename, std::string password, EVP_PKEY** prvkey);

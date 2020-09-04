@@ -158,6 +158,7 @@ void quit_client(unsigned int socket, fd_set* master){
 	// Elimino la struttura corrispondente al client appena disconnesso
 	for(auto i = clients.begin(); i != clients.end(); i++){
 		if((*i)->get_fd() == socket){
+			delete(*i);
 			clients.erase(i);
 			break;
 		}
@@ -343,7 +344,8 @@ int main(int argc, char *argv[]){
 					X509* client_certificate = NULL;
 					X509* server_certificate = NULL;
 					X509_NAME* abc = NULL;
-					EVP_PKEY *client_pubkey = NULL;
+					EVP_PKEY* client_pubkey = NULL;
+					
 					switch(message_type){
 						case HANDSHAKE_1:
 							std::cout << "Handshake fase 1" << std::endl;
@@ -443,6 +445,12 @@ int main(int argc, char *argv[]){
 							}
 							delete[] cert_buffer;
 							cert_buffer = NULL;
+							
+							// Genero iv e le chiavi di cifratura e autenticazione
+							if(client->initialize(EVP_aes_128_cbc()) < 0){
+								std::cerr<<"Errore durante la generazione delle chiavi simmetriche"<<std::endl;
+								exit(-1);
+							}
 							
 							std::cout << "Arrivato alla fine" << std::endl;
 							

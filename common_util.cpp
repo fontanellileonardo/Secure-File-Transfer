@@ -6,6 +6,15 @@ Session::Session(unsigned int fd){
 	counterpart_nonce = 0;
 }
 
+Session::~Session(){
+	if(iv != NULL)
+		delete[] iv;
+	if(key_encr != NULL)
+		delete[] key_encr;
+	if(key_auth != NULL)
+		delete[] key_auth;
+}
+
 uint32_t Session::get_counterpart_nonce(){
 	return counterpart_nonce++;
 }
@@ -16,6 +25,22 @@ unsigned int Session::get_fd(){
 
 uint32_t Session::get_my_nonce(){
 	return my_nonce++;
+}
+
+int Session::initialize(const EVP_CIPHER *type){
+	iv = new char[EVP_CIPHER_iv_length(type)];
+	if(get_random(iv, EVP_CIPHER_iv_length(type)) < 0)
+		return -1;
+	
+	key_encr = new char[EVP_CIPHER_key_length(type)];
+	if(get_random(key_encr, EVP_CIPHER_key_length(type)) < 0)
+		return -1;
+	
+	key_auth = new char[EVP_CIPHER_key_length(type)];
+	if(get_random(key_auth, EVP_CIPHER_key_length(type)) < 0)
+		return -1;
+	
+	return 0;
 }
 
 void Session::set_counterpart_nonce(uint32_t nonce){
@@ -45,6 +70,17 @@ int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
 
 	if(X509_STORE_set_flags(*store, X509_V_FLAG_CRL_CHECK) != 1){
 		std::cerr << "Errore durante l'impostazione dei flag allo store" << std::endl;
+		return -1;
+	}
+	return 0;
+}
+
+// Scrive buflen byte pseudocasuali in buffer
+int get_random(char* buffer, size_t buflen){
+	if(RAND_poll() != 1){
+		return -1;
+	}
+	if(RAND_bytes((unsigned char*)buffer, buflen) != 1){
 		return -1;
 	}
 	return 0;
