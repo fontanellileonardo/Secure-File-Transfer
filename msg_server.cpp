@@ -320,12 +320,15 @@ int main(int argc, char *argv[]){
 					}
 				}
 				else{// Richiesta da client già connesso
-					size_t buflen;
+					size_t buflen, ciphertextlen;
 					char* input_buffer = NULL;
 					char* temp_buffer = NULL;
-					unsigned char* cert_buffer = NULL;
+					char* output_buffer = NULL;
+					char* plaintext_buffer = NULL;
+					char* ciphertext_buffer = NULL;
 					//char input_buffer[512];
 					uint8_t message_type;
+					uint32_t nonce;
 					int ret;
 					
 					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
@@ -431,20 +434,20 @@ int main(int argc, char *argv[]){
 							
 							// Serializzo il certificato del server
 							size_t cert_size;
-							cert_buffer = NULL;
-							cert_size = i2d_X509(server_certificate, &cert_buffer);
+							output_buffer = NULL;
+							cert_size = i2d_X509(server_certificate, (unsigned char**)&output_buffer);
 							if(cert_size < 0){
 								std::cerr<<"Errore nella serializzazione del certificato"<<std::endl;
 								exit(-1);
 							}
 							
 							// Invio il certificato
-							if(send_data(i, (const char*)cert_buffer, cert_size) < 0){
+							if(send_data(i, (const char*)output_buffer, cert_size) < 0){
 								std::cerr<<"Errore durante l'invio del certificato"<<std::endl;
 								exit(-1);
 							}
-							delete[] cert_buffer;
-							cert_buffer = NULL;
+							delete[] output_buffer;
+							output_buffer = NULL;
 							
 							// Genero iv e le chiavi di cifratura e autenticazione
 							if(client->initialize(EVP_aes_128_cbc()) < 0){
@@ -452,7 +455,56 @@ int main(int argc, char *argv[]){
 								exit(-1);
 							}
 							
+							// Cifro le chiavi appena generate con la chiave pubblica del client
+							plaintext_buffer = new char[EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2];
+							client->get_key_auth(plaintext_buffer);
+							client->get_key_encr(plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+							
+							//  Debug
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2));
 							std::cout << "Arrivato alla fine" << std::endl;
+							// /Debug
+							
+							if(encrypt_asym(plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
+								std::cerr<<"Errore durante la cifratura delle chiavi simmetriche"<<std::endl;
+								exit(-1);
+							}
+							
+							//  Debug
+							std::cout << "Dimensione ciphertext: " << ciphertextlen << std::endl;
+							BIO_dump_fp(stdout, (const char*)ciphertext_buffer, ciphertextlen);
+							// /Debug
+							
+							// Inizializzo il buffer per il prossimo messaggio ({chiavi simmetriche}, IV, nonce)
+							buflen = ciphertextlen + EVP_CIPHER_iv_length(EVP_aes_128_cbc()) + sizeof(uint32_t);//TODO: definire una costante per la lunghezza del nonce
+							output_buffer = new char[buflen];
+							
+							// Copio la parte cifrata in un buffer temporaneo, che dovrà essere firmato dal server
+							memcpy(output_buffer, ciphertext_buffer, ciphertextlen);
+							
+							// Copio IV nel buffer temporaneo da firmare
+							client->get_iv(output_buffer + ciphertextlen);
+							
+							// Copio il nonce nel buffer temporaneo da firmare
+							nonce = htonl(client->get_counterpart_nonce());
+							memcpy(output_buffer + ciphertextlen + EVP_CIPHER_iv_length(EVP_aes_128_cbc()), &nonce, sizeof(nonce));
+							
+							//  Debug
+							std::cout << "Dimensione output_buffer: " << buflen << std::endl;
+							BIO_dump_fp(stdout, (const char*)output_buffer, buflen);
+							// /Debug
+							
+							//TODO: firmare il messaggio
+							
+							
+							
+							if(send_data(i, (const char*)output_buffer, buflen) < 0){
+								std::cerr<<"Errore durante l'invio delle chiavi"<<std::endl;
+								exit(-1);
+							}
+							
+							delete[] output_buffer;
+							output_buffer = NULL;
 							
 							break;
 							

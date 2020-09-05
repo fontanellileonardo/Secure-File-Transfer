@@ -24,10 +24,18 @@ class Session{
 		
 		// Restituisce il numero di sequenza della controparte
 		uint32_t get_counterpart_nonce();
+		// Restituisce la chiave pubblica della controparte
+		EVP_PKEY* get_counterpart_pubkey();
 		// Restituisce il numero del file descriptor
 		unsigned int get_fd();
+		// Restituisce IV
+		int get_iv(char* buffer);
 		// Restituisce il mio numero di sequenza
 		uint32_t get_my_nonce();
+		// Restituisce la chiave simmetrica di autenticazione
+		int get_key_auth(char *buffer);
+		// Restituisce la chiave simmetrica di cifratura
+		int get_key_encr(char *buffer);
 		// Inizializza iv, key_encr e key_auth con byte pseudocasuali
 		int initialize(const EVP_CIPHER *type);
 		// Salva il numero di sequenza della controparte
@@ -37,6 +45,7 @@ class Session{
 };
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl);
+int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen);
 int get_random(char* buffer, size_t buflen);
 int load_cert(std::string filename, X509 **cert);
 int load_crl(std::string filename, X509_CRL** crl);

@@ -1,6 +1,6 @@
 #include "common_util.h"
 
-Session::Session(unsigned int fd){
+Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
 	this->fd = fd;//TODO: da usare al posto di TCP_socket
 	my_nonce = 9;//TODO: generarlo casualmente
 	counterpart_nonce = 0;
@@ -19,8 +19,36 @@ uint32_t Session::get_counterpart_nonce(){
 	return counterpart_nonce++;
 }
 
+EVP_PKEY* Session::get_counterpart_pubkey(){
+	return counterpart_pubkey;
+}
+
 unsigned int Session::get_fd(){
 	return fd;
+}
+
+int Session::get_iv(char* buffer){
+	if(iv == NULL)
+		return -1;
+
+	memcpy(buffer, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	return 0;
+}
+
+int Session::get_key_auth(char* buffer){
+	if(key_auth == NULL)
+		return -1;
+
+	memcpy(buffer, key_auth, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	return 0;
+}
+
+int Session::get_key_encr(char* buffer){
+	if(key_encr == NULL)
+		return -1;
+
+	memcpy(buffer, key_encr, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	return 0;
 }
 
 uint32_t Session::get_my_nonce(){
@@ -72,6 +100,34 @@ int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
 		std::cerr << "Errore durante l'impostazione dei flag allo store" << std::endl;
 		return -1;
 	}
+	return 0;
+}
+
+int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen){
+	//char msg[] = "Lorem ipsum dolor sit amet.";//Messaggio da cifrare
+	int encrypted_key_len;//Serve alla funzione, non utilizzato da noi
+	unsigned char* encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];//Serve alla funzione, non utilizzato da noi
+	//unsigned char* ciphertext = new unsigned char[sizeof(msg) + 16];
+	*ciphertext = new unsigned char[plaintextlen + EVP_CIPHER_block_size(type)];
+	int outlen, cipherlen;
+	unsigned char* iv = new unsigned char[EVP_CIPHER_iv_length(type)];
+	
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(EVP_SealInit(ctx, type, &encrypted_key, &encrypted_key_len, iv, &pubkey, 1) == 0){
+		return -1;
+	}
+	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) == 0){
+		return -1;
+	}
+	cipherlen = outlen;
+	if(EVP_SealFinal(ctx, *ciphertext + cipherlen, &outlen) == 0){
+		return -1;
+	}
+	*ciphertextlen = (size_t)(cipherlen + outlen);
+	
+	EVP_CIPHER_CTX_free(ctx);
+	delete[] encrypted_key;
+	delete[] iv;
 	return 0;
 }
 

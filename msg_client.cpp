@@ -143,7 +143,7 @@ int main(int argc, char* argv[]){
 	struct sockaddr_in sv_addr;
 	//int message_type;
 	int user_quit;
-	size_t buflen, buflen_n;
+	size_t buflen;
 	char* input_buffer = NULL;
 	uint8_t message_type;
 	int command;
@@ -345,6 +345,22 @@ int main(int argc, char* argv[]){
 	else{
 		session.set_counterpart_pubkey(server_pubkey);
 	}
+	
+	// Ricevo i dati in ingresso (chiavi simmetriche)
+	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione del certificato del server" << std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2);
+	// /Debug
+	
+	// Dealloco il buffer allocato nella funzione receive_data(...)
+	delete[] input_buffer;
+	input_buffer = NULL;
+	
+	
 	
 	user_quit = 0;
 	print_available_commands();	
