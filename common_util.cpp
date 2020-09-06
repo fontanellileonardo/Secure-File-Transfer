@@ -149,7 +149,7 @@ int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char*
 	return 0;
 }
 
-int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, int *encrypted_key_len, unsigned char** iv){
+int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, size_t *encrypted_key_len, unsigned char** iv){
 	*encrypted_key_len = EVP_PKEY_size(pubkey);
 	*encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];
 	*ciphertext = new unsigned char[plaintextlen + EVP_CIPHER_block_size(type)];
@@ -159,7 +159,7 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_SealInit(ctx, type, encrypted_key, encrypted_key_len, *iv, &pubkey, 1) != 1)
+	if(EVP_SealInit(ctx, type, encrypted_key, (int*)encrypted_key_len, *iv, &pubkey, 1) != 1)
 		return -1;
 	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) != 1)
 		return -1;
@@ -276,10 +276,7 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 }
 
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen){
-	//char msg[] = "Lorem ipsum";
 	*signature = new unsigned char[EVP_PKEY_size(prvkey)];
-	//unsigned int signature_len;
-	//signature = malloc(EVP_PKEY_size(prvkey));
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	if(ctx == NULL)
 		return -1;
@@ -287,10 +284,23 @@ int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned c
 		return -1;
 	if(EVP_SignUpdate(ctx, (unsigned char*)plaintext, plaintextlen) != 1)
 		return -1;
-	if(EVP_SignFinal(ctx, *signature, (unsigned int*)&signaturelen, prvkey) != 1)
+	if(EVP_SignFinal(ctx, *signature, (unsigned int*)signaturelen, prvkey) != 1)
 		return -1;
 	EVP_MD_CTX_free(ctx);
 	return 0;
+}
+
+int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey){
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_VerifyInit(ctx, EVP_sha256()) != 1)
+		return -1;
+	if(EVP_VerifyUpdate(ctx, msg, msg_len) != 1)
+		return -1;
+	int ret = EVP_VerifyFinal(ctx, signature, signature_len, pubkey);
+	EVP_MD_CTX_free(ctx);
+	return ret;
 }
 
 int verify_cert(X509_STORE *store, X509 *cert){

@@ -57,5 +57,6 @@ int load_crl(std::string filename, X509_CRL** crl);
 int load_private_key(std::string filename, std::string password, EVP_PKEY** prvkey);
 int receive_data(unsigned int fd, char** input_buffer, size_t* buflen);
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen);
+int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int send_data(unsigned int fd, const char* buffer, size_t buflen);
 int verify_cert(X509_STORE *store, X509 *cert);

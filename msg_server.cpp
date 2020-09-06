@@ -350,7 +350,7 @@ int main(int argc, char *argv[]){
 					
 					// Vengono utilizzati solo nella parte di handshake
 					unsigned char* encrypted_key = NULL;
-					int encrypted_key_len;
+					size_t encrypted_key_len;
 					unsigned char* iv = NULL;
 					
 					switch(message_type){
@@ -414,7 +414,7 @@ int main(int argc, char *argv[]){
 							
 							//  Debug
 							nonce = *((uint32_t*)input_buffer);
-							client->set_counterpart_nonce(nonce);
+							client->set_counterpart_nonce(ntohl(nonce));
 							std::cout << "Client nonce: " << client->get_counterpart_nonce() << std::endl;
 							// /Debug
 							
@@ -560,8 +560,7 @@ int main(int argc, char *argv[]){
 								exit(-1);
 							}
 							
-							/*
-							// Firmo l'insieme dei dati ({chiavi simmetriche}, IV, numero_sequenziale)
+							// Firmo l'insieme dei dati ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
 							if(sign_asym(plaintext_buffer, buflen, prvkey, (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
 								std::cerr<<"Errore durante la firma digitale"<<std::endl;
 								exit(-1);
@@ -570,7 +569,7 @@ int main(int argc, char *argv[]){
 							delete[] plaintext_buffer;
 							plaintext_buffer = NULL;
 							
-							// Invio la firma di ({chiavi simmetriche}Ke, IV, numero_sequenziale)
+							// Invio la firma di ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
 							if(send_data(i, (const char*)ciphertext_buffer, ciphertextlen) < 0){
 								std::cerr<<"Errore durante l'invio della firma"<<std::endl;
 								exit(-1);
@@ -581,6 +580,18 @@ int main(int argc, char *argv[]){
 							
 							// Recupero il numero sequenziale
 							nonce = client->get_my_nonce();
+							
+							//  Debug
+							std::cout << "Numero sequenziale server: " << nonce << std::endl;
+							// /Debug
+							
+							nonce = htonl(nonce);
+							
+							//  Debug
+							std::cout << "nonce: " << std::endl;
+							BIO_dump_fp(stdout, (const char*)&nonce, sizeof(nonce));
+							// /Debug
+							
 							if(nonce == UINT32_MAX){
 								std::cerr<<"Il numero sequenziale ha raggiunto il limite. Terminazione..."<<std::endl;
 								exit(-1);
@@ -591,7 +602,7 @@ int main(int argc, char *argv[]){
 								std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
 								exit(-1);
 							}
-							*/
+							
 							break;
 							
 						case COMMAND_FILELIST:

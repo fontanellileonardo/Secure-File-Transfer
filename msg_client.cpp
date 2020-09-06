@@ -290,6 +290,7 @@ int main(int argc, char* argv[]){
 		close(TCP_socket);
 		exit(-1);
 	}
+	nonce_buffer = htonl(nonce_buffer);
 	
 	// Invio il numero sequenziale
 	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
@@ -401,6 +402,19 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
+	// Inizializzo il buffer per la verifica del messaggio
+	size_t msg_to_be_verified_len = ciphertextlen + encrypted_key_len + iv_len + buflen;
+	unsigned char* msg_to_be_verified = new unsigned char[msg_to_be_verified_len];
+	memcpy(msg_to_be_verified, ciphertext_buffer, ciphertextlen);
+	memcpy(msg_to_be_verified + ciphertextlen, encrypted_key, encrypted_key_len);
+	memcpy(msg_to_be_verified + ciphertextlen + encrypted_key_len, iv, iv_len);
+	memcpy(msg_to_be_verified + ciphertextlen + encrypted_key_len + iv_len, input_buffer, buflen);
+	
+	//  Debug
+	std::cout << "Dimensione msg_to_be_verified: " << msg_to_be_verified_len << std::endl;
+	BIO_dump_fp(stdout, (const char*)msg_to_be_verified, msg_to_be_verified_len);
+	// /Debug
+	
 	// Dealloco il buffer allocato nella funzione receive_data(...)
 	delete[] input_buffer;
 	input_buffer = NULL;
@@ -411,6 +425,9 @@ int main(int argc, char* argv[]){
 		std::cerr << "Errore durante la decifratura delle chiavi simmetriche" << std::endl;
 		exit(-1);
 	}
+	
+	delete[] ciphertext_buffer;
+	ciphertext_buffer = NULL;
 	
 	// Salvo le chiavi simmetriche ricevute
 	session.set_key_auth(EVP_aes_128_cbc(), (char*)plaintext_buffer);
@@ -425,6 +442,51 @@ int main(int argc, char* argv[]){
 	std::cout << "Chiave di cifratura" << std::endl;
 	session.get_key_encr(input_buffer);
 	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	// /Debug
+	
+	// Ricevo la firma di ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
+	if(receive_data(TCP_socket, (char**)&input_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione della firma" << std::endl;
+		exit(-1);
+	}
+	
+	//TODO: verificare la firma
+	ret = sign_asym_verify(msg_to_be_verified, msg_to_be_verified_len, (unsigned char*)input_buffer, buflen, session.get_counterpart_pubkey());
+	if(ret < 0){// Errore interno durante la verifica
+		std::cerr << "Errore durante la verifica della firma" << std::endl;
+		exit(-1);
+	}
+	if(ret == 0){// Certificato non valido
+		std::cerr << "Firma non valida" << std::endl;
+		quitClient(TCP_socket);
+		exit(-1);
+	}
+	/*
+	// Ricevo il numero sequenziale
+	if(receive_data(TCP_socket, (char**)&nonce_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione dell numero sequenziale" << std::endl;
+		exit(-1);
+	}
+	*/
+	
+	// Ricevo il numero sequenziale
+	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione del numero sequenziale" << std::endl;
+		exit(-1);
+	}
+	
+	nonce_buffer = *((uint32_t*)input_buffer);
+	
+	//  Debug
+	std::cout << "nonce_buffer: " << std::endl;
+	BIO_dump_fp(stdout, (const char*)&nonce_buffer, buflen);
+	// /Debug
+	
+	// Salvo il numero sequenziale del server
+	session.set_counterpart_nonce(ntohl(nonce_buffer));
+	
+	//  Debug
+	std::cout << "Numero sequenziale server: " << session.get_counterpart_nonce() << std::endl;
 	// /Debug
 	
 	user_quit = 0;
