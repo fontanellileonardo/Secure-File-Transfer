@@ -271,7 +271,7 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	// Invio il certificato serializzato e il nonce, preceduti dal byte che indica il tipo di messaggio
+	// Invio il certificato serializzato e il numero sequenziale, preceduti dal byte che indica il tipo di messaggio
 	message_type = HANDSHAKE_1;
 	send(TCP_socket, &message_type, sizeof(message_type), 0);
 	
@@ -283,7 +283,7 @@ int main(int argc, char* argv[]){
 	delete[] cert_buffer;
 	cert_buffer = NULL;
 	
-	// Recupero il nonce
+	// Recupero il numero sequenziale
 	uint32_t nonce_buffer = session.get_my_nonce();
 	if(nonce_buffer == UINT32_MAX){
 		quitClient(TCP_socket);//TODO: chiudere correttamente il client in tutti i casi di errore
@@ -291,9 +291,9 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	// Invio il nonce
+	// Invio il numero sequenziale
 	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
-		std::cerr<<"Errore durante l'invio del nonce"<<std::endl;
+		std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
 		exit(-1);
 	}
 	
@@ -346,21 +346,86 @@ int main(int argc, char* argv[]){
 		session.set_counterpart_pubkey(server_pubkey);
 	}
 	
-	// Ricevo i dati in ingresso (chiavi simmetriche)
-	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+	// Ricevo i dati in ingresso (chiavi simmetriche cifrate)
+	size_t ciphertextlen;
+	unsigned char* ciphertext_buffer = NULL;
+	if(receive_data(TCP_socket, (char**)&ciphertext_buffer, &ciphertextlen) < 0){
 		std::cerr << "Errore durante la ricezione del certificato del server" << std::endl;
 		exit(-1);
 	}
 	
 	//  Debug
-	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2);
+	std::cout << "Dimensione ciphertext_buffer: " << ciphertextlen << std::endl;
+	BIO_dump_fp(stdout, (const char*)ciphertext_buffer, ciphertextlen);
 	// /Debug
+	
+	// Ricevo i dati in ingresso (encrypted_key)
+	size_t encrypted_key_len;
+	unsigned char* encrypted_key = NULL;
+	if(receive_data(TCP_socket, (char**)&encrypted_key, &encrypted_key_len) < 0){
+		std::cerr << "Errore durante la ricezione di encrypted_key" << std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	std::cout << "Dimensione encrypted_key: " << encrypted_key_len << std::endl;
+	BIO_dump_fp(stdout, (const char*)encrypted_key, encrypted_key_len);
+	// /Debug
+	
+	// Ricevo i dati in ingresso (IV)
+	size_t iv_len;
+	unsigned char* iv = NULL;
+	if(receive_data(TCP_socket, (char**)&iv, &iv_len) < 0){
+		std::cerr << "Errore durante la ricezione di IV" << std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	std::cout << "Dimensione iv: " << iv_len << std::endl;
+	BIO_dump_fp(stdout, (const char*)iv, iv_len);
+	// /Debug
+	
+	// Ricevo i dati in ingresso (numero sequenziale)
+	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la ricezione del numero sequenziale" << std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	std::cout << "Dimensione input_buffer: " << buflen << std::endl;
+	BIO_dump_fp(stdout, (const char*)input_buffer, buflen);
+	// /Debug
+	
+	if(nonce_buffer != *((uint32_t*)input_buffer)){
+		std::cerr << "Il numero sequenziale non corrisponde" << std::endl;
+		exit(-1);
+	}
 	
 	// Dealloco il buffer allocato nella funzione receive_data(...)
 	delete[] input_buffer;
 	input_buffer = NULL;
 	
+	// Decifro le chiavi simmetriche
+	unsigned char* plaintext_buffer = NULL;
+	if(decrypt_asym(ciphertext_buffer, ciphertextlen, encrypted_key, encrypted_key_len, iv, prvkey, &plaintext_buffer, &buflen) < 0){
+		std::cerr << "Errore durante la decifratura delle chiavi simmetriche" << std::endl;
+		exit(-1);
+	}
 	
+	// Salvo le chiavi simmetriche ricevute
+	session.set_key_auth(EVP_aes_128_cbc(), (char*)plaintext_buffer);
+	session.set_key_encr(EVP_aes_128_cbc(), (char*)plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	
+	//  Debug
+	std::cout << "Chiave di autenticazione" << std::endl;
+	input_buffer = new char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+	memset(input_buffer, 0, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	session.get_key_auth(input_buffer);
+	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	std::cout << "Chiave di cifratura" << std::endl;
+	session.get_key_encr(input_buffer);
+	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	// /Debug
 	
 	user_quit = 0;
 	print_available_commands();	

@@ -326,7 +326,6 @@ int main(int argc, char *argv[]){
 					char* output_buffer = NULL;
 					char* plaintext_buffer = NULL;
 					char* ciphertext_buffer = NULL;
-					//char input_buffer[512];
 					uint8_t message_type;
 					uint32_t nonce;
 					int ret;
@@ -348,6 +347,11 @@ int main(int argc, char *argv[]){
 					X509* server_certificate = NULL;
 					X509_NAME* abc = NULL;
 					EVP_PKEY* client_pubkey = NULL;
+					
+					// Vengono utilizzati solo nella parte di handshake
+					unsigned char* encrypted_key = NULL;
+					int encrypted_key_len;
+					unsigned char* iv = NULL;
 					
 					switch(message_type){
 						case HANDSHAKE_1:
@@ -409,7 +413,8 @@ int main(int argc, char *argv[]){
 							}
 							
 							//  Debug
-							client->set_counterpart_nonce(*((uint32_t*)input_buffer));
+							nonce = *((uint32_t*)input_buffer);
+							client->set_counterpart_nonce(nonce);
 							std::cout << "Client nonce: " << client->get_counterpart_nonce() << std::endl;
 							// /Debug
 							
@@ -461,51 +466,132 @@ int main(int argc, char *argv[]){
 							client->get_key_encr(plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
 							
 							//  Debug
+							std::cout << "Chiavi simmetriche in chiaro" << std::endl;
 							BIO_dump_fp(stdout, (const char*)plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2));
-							std::cout << "Arrivato alla fine" << std::endl;
 							// /Debug
 							
-							if(encrypt_asym(plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
+							//
+							if(encrypt_asym(plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen, &encrypted_key, &encrypted_key_len, &iv) < 0){
 								std::cerr<<"Errore durante la cifratura delle chiavi simmetriche"<<std::endl;
 								exit(-1);
 							}
 							
+							delete[] plaintext_buffer;
+							plaintext_buffer = NULL;
+							
+							// Inizializzo il buffer per la parte da firmare ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
+							buflen = ciphertextlen + encrypted_key_len + EVP_CIPHER_iv_length(EVP_aes_128_cbc()) + sizeof(uint32_t);//TODO: definire una costante per la lunghezza del nonce
+							plaintext_buffer = new char[buflen];
+							
 							//  Debug
-							std::cout << "Dimensione ciphertext: " << ciphertextlen << std::endl;
+							std::cout << "Inizio messaggio ============================================" << std::endl;
+							std::cout << "Dimensione messaggio: " << buflen << std::endl;
+							std::cout << "Stato iniziale buffer" << std::endl;
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, buflen);
+							std::cout << std::endl;
+							// /Debug
+							
+							// Copio le chiavi cifrate nel buffer appena creato
+							memcpy(plaintext_buffer, ciphertext_buffer, ciphertextlen);
+							
+							//  Debug
+							std::cout << "Stato buffer 1" << std::endl;
 							BIO_dump_fp(stdout, (const char*)ciphertext_buffer, ciphertextlen);
+							std::cout << "Dimensione (chiavi cifrate): " << ciphertextlen << std::endl;
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, buflen);
+							std::cout << std::endl;
 							// /Debug
 							
-							// Inizializzo il buffer per il prossimo messaggio ({chiavi simmetriche}, IV, nonce)
-							buflen = ciphertextlen + EVP_CIPHER_iv_length(EVP_aes_128_cbc()) + sizeof(uint32_t);//TODO: definire una costante per la lunghezza del nonce
-							output_buffer = new char[buflen];
+							delete[] ciphertext_buffer;
+							ciphertext_buffer = NULL;
 							
-							// Copio la parte cifrata in un buffer temporaneo, che dovrà essere firmato dal server
-							memcpy(output_buffer, ciphertext_buffer, ciphertextlen);
-							
-							// Copio IV nel buffer temporaneo da firmare
-							client->get_iv(output_buffer + ciphertextlen);
-							
-							// Copio il nonce nel buffer temporaneo da firmare
-							nonce = htonl(client->get_counterpart_nonce());
-							memcpy(output_buffer + ciphertextlen + EVP_CIPHER_iv_length(EVP_aes_128_cbc()), &nonce, sizeof(nonce));
-							
-							//  Debug
-							std::cout << "Dimensione output_buffer: " << buflen << std::endl;
-							BIO_dump_fp(stdout, (const char*)output_buffer, buflen);
-							// /Debug
-							
-							//TODO: firmare il messaggio
-							
-							
-							
-							if(send_data(i, (const char*)output_buffer, buflen) < 0){
-								std::cerr<<"Errore durante l'invio delle chiavi"<<std::endl;
+							// Invio le chiavi cifrate al client
+							if(send_data(i, (const char*)plaintext_buffer, ciphertextlen) < 0){
+								std::cerr<<"Errore durante l'invio delle chiavi simmetriche cifrate"<<std::endl;
 								exit(-1);
 							}
 							
-							delete[] output_buffer;
-							output_buffer = NULL;
+							// Copio encrypted_key nel buffer da firmare
+							memcpy((plaintext_buffer + ciphertextlen), encrypted_key, encrypted_key_len);
 							
+							//  Debug
+							std::cout << "Stato buffer 2" << std::endl;
+							BIO_dump_fp(stdout, (const char*)encrypted_key, encrypted_key_len);
+							std::cout << "Dimensione (encrypted_key): " << encrypted_key_len << std::endl;
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, buflen);
+							std::cout << std::endl;
+							// /Debug
+							
+							// Invio encrypted_key al client
+							if(send_data(i, (const char*)(encrypted_key), encrypted_key_len) < 0){
+								std::cerr<<"Errore durante l'invio di encrypted_key"<<std::endl;
+								exit(-1);
+							}
+							
+							// Copio IV nel buffer da firmare
+							memcpy((plaintext_buffer + ciphertextlen + encrypted_key_len), iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+							
+							//  Debug
+							std::cout << "Stato buffer 3" << std::endl;
+							BIO_dump_fp(stdout, (const char*)iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+							std::cout << "Dimensione (IV): " << EVP_CIPHER_iv_length(EVP_aes_128_cbc()) << std::endl;
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, buflen);
+							std::cout << std::endl;
+							// /Debug
+							
+							// Invio IV al client
+							if(send_data(i, (const char*)(plaintext_buffer + ciphertextlen + encrypted_key_len), EVP_CIPHER_iv_length(EVP_aes_128_cbc())) < 0){
+								std::cerr<<"Errore durante l'invio di IV"<<std::endl;
+								exit(-1);
+							}
+							// Copio il numero sequenziale nel buffer da firmare
+							memcpy(plaintext_buffer + ciphertextlen + encrypted_key_len + EVP_CIPHER_iv_length(EVP_aes_128_cbc()), &nonce, sizeof(nonce));
+							
+							//  Debug
+							std::cout << "Stato buffer 4" << std::endl;
+							std::cout << "Dimensione (numero sequenziale): " << sizeof(nonce) << std::endl;
+							BIO_dump_fp(stdout, (const char*)plaintext_buffer, buflen);
+							std::cout << std::endl;
+							// /Debug
+							
+							// Invio il numero sequenziale al client
+							if(send_data(i, (const char*)&nonce, sizeof(nonce)) < 0){
+								std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
+								exit(-1);
+							}
+							
+							/*
+							// Firmo l'insieme dei dati ({chiavi simmetriche}, IV, numero_sequenziale)
+							if(sign_asym(plaintext_buffer, buflen, prvkey, (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
+								std::cerr<<"Errore durante la firma digitale"<<std::endl;
+								exit(-1);
+							}
+							
+							delete[] plaintext_buffer;
+							plaintext_buffer = NULL;
+							
+							// Invio la firma di ({chiavi simmetriche}Ke, IV, numero_sequenziale)
+							if(send_data(i, (const char*)ciphertext_buffer, ciphertextlen) < 0){
+								std::cerr<<"Errore durante l'invio della firma"<<std::endl;
+								exit(-1);
+							}
+							
+							delete[] ciphertext_buffer;
+							ciphertext_buffer = NULL;
+							
+							// Recupero il numero sequenziale
+							nonce = client->get_my_nonce();
+							if(nonce == UINT32_MAX){
+								std::cerr<<"Il numero sequenziale ha raggiunto il limite. Terminazione..."<<std::endl;
+								exit(-1);
+							}
+							
+							// Invio il numero sequenziale
+							if(send_data(i, (const char*)&nonce, sizeof(nonce)) < 0){
+								std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
+								exit(-1);
+							}
+							*/
 							break;
 							
 						case COMMAND_FILELIST:
@@ -541,5 +627,5 @@ int main(int argc, char *argv[]){
 }
 
 //TODO: Si usa a volte return, a volte exit. Sistemare
-
+//TODO: controllare dopo ogni new che i puntatori non siano null
 

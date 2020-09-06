@@ -56,9 +56,11 @@ uint32_t Session::get_my_nonce(){
 }
 
 int Session::initialize(const EVP_CIPHER *type){
+	/*
 	iv = new char[EVP_CIPHER_iv_length(type)];
 	if(get_random(iv, EVP_CIPHER_iv_length(type)) < 0)
 		return -1;
+	*/
 	
 	key_encr = new char[EVP_CIPHER_key_length(type)];
 	if(get_random(key_encr, EVP_CIPHER_key_length(type)) < 0)
@@ -77,6 +79,30 @@ void Session::set_counterpart_nonce(uint32_t nonce){
 
 void Session::set_counterpart_pubkey(EVP_PKEY *pubkey){
 	counterpart_pubkey = pubkey;
+}
+
+int Session::set_key_auth(const EVP_CIPHER *type, char* key){
+	if(key == NULL)
+		return -1;
+	
+	if(key_auth != NULL)
+		delete[] key_auth;
+	
+	key_auth = new char[EVP_CIPHER_key_length(type)];
+	memcpy(key_auth, key, EVP_CIPHER_key_length(type));
+	return 0;
+}
+
+int Session::set_key_encr(const EVP_CIPHER *type, char* key){
+	if(key == NULL)
+		return -1;
+	
+	if(key_encr != NULL)
+		delete[] key_encr;
+	
+	key_encr = new char[EVP_CIPHER_key_length(type)];
+	memcpy(key_encr, key, EVP_CIPHER_key_length(type));
+	return 0;
 }
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
@@ -103,31 +129,46 @@ int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
 	return 0;
 }
 
-int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen){
-	//char msg[] = "Lorem ipsum dolor sit amet.";//Messaggio da cifrare
-	int encrypted_key_len;//Serve alla funzione, non utilizzato da noi
-	unsigned char* encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];//Serve alla funzione, non utilizzato da noi
-	//unsigned char* ciphertext = new unsigned char[sizeof(msg) + 16];
-	*ciphertext = new unsigned char[plaintextlen + EVP_CIPHER_block_size(type)];
-	int outlen, cipherlen;
-	unsigned char* iv = new unsigned char[EVP_CIPHER_iv_length(type)];
+int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char* encrypted_key, size_t encrypted_key_len, unsigned char* iv, EVP_PKEY* prvkey, unsigned char** plaintext, size_t* plaintextlen){
+	int outlen, plainlen;
+	*plaintext = new unsigned char[ciphertextlen];
 	
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-	if(EVP_SealInit(ctx, type, &encrypted_key, &encrypted_key_len, iv, &pubkey, 1) == 0){
+	if(ctx == NULL)
 		return -1;
-	}
-	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) == 0){
+	if(EVP_OpenInit(ctx, EVP_aes_128_cbc(), encrypted_key, encrypted_key_len, iv, prvkey) != 1)
 		return -1;
-	}
+	if(EVP_OpenUpdate(ctx, *plaintext, &outlen, ciphertext, ciphertextlen) != 1)
+		return -1;
+	plainlen = outlen;
+	if(EVP_OpenFinal(ctx, *plaintext + plainlen, &outlen) != 1)
+		return -1;
+	plainlen += outlen;
+	*plaintextlen = (size_t)plainlen;
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
+}
+
+int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, int *encrypted_key_len, unsigned char** iv){
+	*encrypted_key_len = EVP_PKEY_size(pubkey);
+	*encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];
+	*ciphertext = new unsigned char[plaintextlen + EVP_CIPHER_block_size(type)];
+	int outlen, cipherlen;
+	*iv = new unsigned char[EVP_CIPHER_iv_length(type)];
+	
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_SealInit(ctx, type, encrypted_key, encrypted_key_len, *iv, &pubkey, 1) != 1)
+		return -1;
+	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) != 1)
+		return -1;
 	cipherlen = outlen;
-	if(EVP_SealFinal(ctx, *ciphertext + cipherlen, &outlen) == 0){
+	if(EVP_SealFinal(ctx, *ciphertext + cipherlen, &outlen) != 1)
 		return -1;
-	}
 	*ciphertextlen = (size_t)(cipherlen + outlen);
 	
 	EVP_CIPHER_CTX_free(ctx);
-	delete[] encrypted_key;
-	delete[] iv;
 	return 0;
 }
 
@@ -232,6 +273,24 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 		sent += ret;
 	}
 	return (sent == buflen)?0:(-1);
+}
+
+int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen){
+	//char msg[] = "Lorem ipsum";
+	*signature = new unsigned char[EVP_PKEY_size(prvkey)];
+	//unsigned int signature_len;
+	//signature = malloc(EVP_PKEY_size(prvkey));
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_SignInit(ctx, EVP_sha256()) != 1)
+		return -1;
+	if(EVP_SignUpdate(ctx, (unsigned char*)plaintext, plaintextlen) != 1)
+		return -1;
+	if(EVP_SignFinal(ctx, *signature, (unsigned int*)&signaturelen, prvkey) != 1)
+		return -1;
+	EVP_MD_CTX_free(ctx);
+	return 0;
 }
 
 int verify_cert(X509_STORE *store, X509 *cert){
