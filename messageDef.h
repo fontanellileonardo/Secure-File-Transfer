@@ -29,4 +29,13 @@
 
 #define MESSAGE_USER_COMMAND_DETAILED "\n!help ->visualizza i comandi disponibili\n !upload filename -> upload file chiamato filename sul server\n !download filename -> download filename dal server\n !list -> visualizza i file disponibili e la loro dimensione\n !quit -> disconnette l'utente dal server ed esce\n\n"
 
+#define CA_CERTIFICATE_FILENAME "cas_dir/ca_cert.pem"
 #define CLIENT_CERTIFICATE_FILENAME "cas_dir/newcerts/01.pem"
+#define CRL_FILENAME "cas_dir/crl.pem"
+#define SERVER_CERTIFICATE_FILENAME "cas_dir/newcerts/03.pem"
+
+#define SERVER_PRVKEY "certificates/server_prvkey.pem"
+#define SERVER_PRVKEY_PASSWORD "password"
+
+#define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
+#define CLIENT_PRVKEY_PASSWORD "password"

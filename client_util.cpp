@@ -14,20 +14,6 @@ int identifyCommand(char* command){
 	return COMMAND_INVALID;
 }
 
-//Carica il certificato come file .pem
-int load_cert(std::string filename, X509** cert){
-	FILE* file = fopen(filename.c_str(), "r");
-	if(!file){
-		return -1;
-	}
-	*cert = PEM_read_X509(file, NULL, NULL, NULL);
-	if(!cert){
-		return -1;
-	}
-	fclose(file);
-	return 0;
-}
-
 //funzione che stampa a video i comandi disponibili per l'utente
 void print_available_commands(){
 	//printf("%s",MESSAGE_USER_COMMAND);
@@ -52,22 +38,4 @@ void quitClient(int socket){
 	send(socket, &message_type_n, sizeof(uint32_t), 0);
 	
 	return;
-}
-
-int send_data(unsigned int fd, const char* buffer, size_t buflen){
-	size_t sent = 0;
-	ssize_t ret;
-	
-	size_t buflen_n = htonl(buflen);
-	send(fd, &buflen_n, sizeof(buflen_n), 0);
-	
-	while(sent < buflen){
-		ret = send(fd, buffer + sent, buflen - sent, 0);
-		std::cout << "Inviati: " << ret << " byte" << std::endl;
-		if(ret < 0){
-			return -1;
-		} 
-		sent += ret;
-	}
-	return (sent == buflen)?0:(-1);
 }
