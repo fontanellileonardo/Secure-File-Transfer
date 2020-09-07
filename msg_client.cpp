@@ -19,6 +19,11 @@
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
 
+EVP_PKEY* prvkey = NULL;
+X509* client_certificate = NULL;
+X509* server_certificate = NULL;
+EVP_PKEY* server_pubkey = NULL;
+
 //static size_t CIPHER_SIZE = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
 /*
@@ -137,6 +142,24 @@ void encrypt(int TCP_socket){
 }
 */
 
+void terminate(int value){
+	// Dealloco la chiave pubblica del server
+	if(server_pubkey != NULL)
+		EVP_PKEY_free(server_pubkey);
+	// Dealloco il certificato del server
+	if(server_certificate != NULL)
+		free(server_certificate);
+	// Dealloco il certificato del client
+	if(client_certificate != NULL)
+		free(client_certificate);
+	// Dealloco la chiave privata
+	if(prvkey != NULL)
+		EVP_PKEY_free(prvkey);
+	// Removes all ciphers and digests from the table
+	EVP_cleanup();
+	exit(value);
+}
+
 int main(int argc, char* argv[]){
 	
 	int TCP_socket;
@@ -169,10 +192,9 @@ int main(int argc, char* argv[]){
 	
 	//===== Chiave privata =====
 	OpenSSL_add_all_algorithms();
-	EVP_PKEY* prvkey;
 	if(load_private_key(CLIENT_PRVKEY, CLIENT_PRVKEY_PASSWORD, &prvkey) < 0){
 		std::cerr << "Errore durante il caricamento della chiave privata" << std::endl;
-		exit(-1);
+		terminate(-1);
 	}
 	
 	//===== Creazione store =====
@@ -181,21 +203,21 @@ int main(int argc, char* argv[]){
 	X509* CA_cert = NULL;
 	if(load_cert(CA_CERTIFICATE_FILENAME, &CA_cert) < 0){
 		std::cerr << "Errore durante il caricamento del certificato CA" << std::endl;
-		exit(-1);
+		terminate(-2);
 	}
 	
 	// Leggo il CRL
 	X509_CRL* crl = NULL;
 	if(load_crl(CRL_FILENAME, &crl) < 0){
 		std::cerr << "Errore durante il caricamento del CRL" << std::endl;
-		exit(-1);
+		terminate(-3);
 	}
 	
 	// Creazione dello store dei certificati
 	X509_STORE* store = NULL;
 	if(create_store(&store, CA_cert, crl) < 0){
 		std::cerr << "Errore durante la creazioni dello store" << std::endl;
-		exit(-1);
+		terminate(-4);
 	}
 	
 	//===== Creazione socket =====
@@ -210,7 +232,7 @@ int main(int argc, char* argv[]){
 	FD_SET(fileno(stdin), &master);	
 	
 	// Creazione dell'indirizzo del server
-	memset(&sv_addr, 0, sizeof(sv_addr));//TODO: valutare se è pericolosa
+	memset(&sv_addr, 0, sizeof(sv_addr));
 	sv_addr.sin_family = AF_INET;
 	sv_addr.sin_port = htons(server_port);
 	
@@ -221,45 +243,44 @@ int main(int argc, char* argv[]){
 	
 	// Creazione del socket
 	if((TCP_socket = socket(AF_INET, SOCK_STREAM, 0))<0){
-		//printf("errore creazione socket tcp, err:#%d\n", errno);
-		std::cerr<<"errore creazione socket tcp, err: #"<<errno<<std::endl;
-		exit(5);
+		std::cerr << "Errore creazione socket tcp, err: #" << errno << std::endl;
+		terminate(-5);
 	}
-	Session session = Session(0);
+	
+	// Creazione oggetto utilizzato per contenere le informazioni sulla connessione
+	Session session = Session(TCP_socket);
 	
 	// Connessione del socket
 	if(connect(TCP_socket, (struct sockaddr*)&sv_addr, sizeof(sv_addr))<0){
-		//printf("impossibile connettersi al server, err: #%d\n", errno);
-		std::cerr<<"impossibile connettersi al server, err: #"<<errno<<std::endl;
-		exit(6);
+		std::cerr << "Impossibile connettersi al server, err: #" << errno << std::endl;
+		terminate(-6);
 	}
 	
 	// Controllo che il server abbia accettato la connessione
 	recv(TCP_socket, &message_type, sizeof(message_type), 0);
 	if(message_type == MESSAGE_FULL){
-		std::cout<<"massimo numero di utenti connessi, riprovare piu' tardi"<<std::endl;
-		//printf("massimo numero di utenti connessi, riprovare piu' tardi\n");
-		exit(7);
+		std::cout << "Massimo numero di utenti connessi, riprovare piu' tardi" << std::endl;
+		terminate(-7);
 	}
 	
 	// Aggiungo il socket al set
 	FD_SET(TCP_socket, &master);
-	//printf("connesso al server\n");
-	std::cout<<"connesso al server"<<std::endl;
+	std::cout << "Connesso al server" << std::endl;
 	
 	//===== HANDSHAKE - PASSO 1 =====
 	
 	// Leggo il certificato del client
-	X509* client_certificate = NULL;
 	if(load_cert(CLIENT_CERTIFICATE_FILENAME, &client_certificate) < 0){
 		std::cerr << "Errore durante il caricamento del certificato" << std::endl;
-		exit(-1);
+		terminate(-8);
 	}
 	
 	//  Debug
-	X509_NAME* abc = X509_get_subject_name(client_certificate);
-	char* temp_buffer = X509_NAME_oneline(abc, NULL, 0);
-	std::cout << "Certificato client:" << temp_buffer << std::endl;
+	X509_NAME* abc_1 = X509_get_subject_name(client_certificate);
+	char* temp_buffer_1 = X509_NAME_oneline(abc_1, NULL, 0);
+	std::cout << "Certificato client:" << temp_buffer_1 << std::endl;
+	delete temp_buffer_1;
+	free(abc_1);
 	// /Debug
 	
 	// Serializzo il certificato del client
@@ -267,35 +288,42 @@ int main(int argc, char* argv[]){
 	unsigned char* cert_buffer = NULL;
 	cert_size = i2d_X509(client_certificate, &cert_buffer);
 	if(cert_size < 0){
-		std::cerr<<"Errore nella serializzazione del certificato"<<std::endl;
-		exit(-1);
+		std::cerr << "Errore nella serializzazione del certificato" << std::endl;
+		terminate(-9);
 	}
 	
 	// Invio il certificato serializzato e il numero sequenziale, preceduti dal byte che indica il tipo di messaggio
 	message_type = HANDSHAKE_1;
-	send(TCP_socket, &message_type, sizeof(message_type), 0);
+	if(send(TCP_socket, &message_type, sizeof(message_type), 0) != sizeof(message_type)){
+		std::cerr << "Errore durante l'invio di message_type" << std::endl;
+		terminate(-10);
+	}
 	
 	// Invio il certificato
 	if(send_data(TCP_socket, (const char*)cert_buffer, cert_size) < 0){
-		std::cerr<<"Errore durante l'invio del certificato"<<std::endl;
-		exit(-1);
+		std::cerr << "Errore durante l'invio del certificato" << std::endl;
+		terminate(-11);
 	}
+	
 	delete[] cert_buffer;
 	cert_buffer = NULL;
 	
 	// Recupero il numero sequenziale
 	uint32_t nonce_buffer = session.get_my_nonce();
 	if(nonce_buffer == UINT32_MAX){
-		quitClient(TCP_socket);//TODO: chiudere correttamente il client in tutti i casi di errore
-		close(TCP_socket);
-		exit(-1);
+		terminate(-12);
 	}
+	
+	//  Debug
+	std::cout << "Numero sequenziale client: " << nonce_buffer << std::endl;
+	// /Debug
+	
 	nonce_buffer = htonl(nonce_buffer);
 	
 	// Invio il numero sequenziale
 	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
-		std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
-		exit(-1);
+		std::cerr << "Errore durante l'invio del nonce" << std::endl;
+		terminate(-13);
 	}
 	
 	//===== PASSO 2 =====
@@ -303,16 +331,16 @@ int main(int argc, char* argv[]){
 	// Ricevo i dati in ingresso (certificato)
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la ricezione del certificato del server" << std::endl;
-		exit(-1);
+		terminate(-14);
 	}
 	
 	// Deserializzo il certificato del server appena ricevuto
 	// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
-	temp_buffer = input_buffer;
-	X509* server_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer, buflen);
+	char* temp_buffer_deser = input_buffer;
+	server_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer_deser, buflen);
 	if(server_certificate == NULL){
 		std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
-		exit(-1);
+		terminate(-15);
 	}
 	
 	// Dealloco il buffer allocato nella funzione receive_data(...)
@@ -320,28 +348,29 @@ int main(int argc, char* argv[]){
 	input_buffer = NULL;
 	
 	//  Debug
-	abc = X509_get_subject_name(server_certificate);
-	temp_buffer = X509_NAME_oneline(abc, NULL, 0);
-	std::cout << "Certificato server:" << temp_buffer << std::endl;
+	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);
+	char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
+	std::cout << "Certificato server:" << temp_buffer_2 << std::endl;
+	delete temp_buffer_2;
+	free(abc_2);
 	// /Debug
 	
 	// Verifico il certificato
 	ret = verify_cert(store, server_certificate);
 	if(ret < 0){// Errore interno durante la verifica
-		exit(-1);
+		terminate(-16);
 	}
-	if(ret == 0){// Certificato non valido
-		quitClient(TCP_socket);
-		exit(-1);
+	if(ret == 0){
+		std::cout << "Certificato del server non valido" << std::endl;
+		terminate(-17);
 	}
 	
 	// Estraggo la chiave pubblica del server dal certificato
-	EVP_PKEY *server_pubkey = NULL;
+	server_pubkey = NULL;
 	server_pubkey = X509_get_pubkey(server_certificate);
 	if(server_pubkey == NULL){
 		std::cerr << "Errore durante l'estrazione della chiave pubblica del server" << std::endl;
-		quitClient(TCP_socket);
-		exit(-1);
+		terminate(-18);
 	}
 	else{
 		session.set_counterpart_pubkey(server_pubkey);
@@ -351,55 +380,35 @@ int main(int argc, char* argv[]){
 	size_t ciphertextlen;
 	unsigned char* ciphertext_buffer = NULL;
 	if(receive_data(TCP_socket, (char**)&ciphertext_buffer, &ciphertextlen) < 0){
-		std::cerr << "Errore durante la ricezione del certificato del server" << std::endl;
-		exit(-1);
+		std::cerr << "Errore durante la ricezione delle chiavi simmetriche cifrate" << std::endl;
+		terminate(-19);
 	}
-	
-	//  Debug
-	std::cout << "Dimensione ciphertext_buffer: " << ciphertextlen << std::endl;
-	BIO_dump_fp(stdout, (const char*)ciphertext_buffer, ciphertextlen);
-	// /Debug
 	
 	// Ricevo i dati in ingresso (encrypted_key)
 	size_t encrypted_key_len;
 	unsigned char* encrypted_key = NULL;
 	if(receive_data(TCP_socket, (char**)&encrypted_key, &encrypted_key_len) < 0){
 		std::cerr << "Errore durante la ricezione di encrypted_key" << std::endl;
-		exit(-1);
+		terminate(-20);
 	}
-	
-	//  Debug
-	std::cout << "Dimensione encrypted_key: " << encrypted_key_len << std::endl;
-	BIO_dump_fp(stdout, (const char*)encrypted_key, encrypted_key_len);
-	// /Debug
 	
 	// Ricevo i dati in ingresso (IV)
 	size_t iv_len;
 	unsigned char* iv = NULL;
 	if(receive_data(TCP_socket, (char**)&iv, &iv_len) < 0){
 		std::cerr << "Errore durante la ricezione di IV" << std::endl;
-		exit(-1);
+		terminate(-21);
 	}
 	
-	//  Debug
-	std::cout << "Dimensione iv: " << iv_len << std::endl;
-	BIO_dump_fp(stdout, (const char*)iv, iv_len);
-	// /Debug
-	
-	// Ricevo i dati in ingresso (numero sequenziale)
+	// Ricevo i dati in ingresso (nonce)
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
-		std::cerr << "Errore durante la ricezione del numero sequenziale" << std::endl;
-		exit(-1);
+		std::cerr << "Errore durante la ricezione del numero sequenziale del client" << std::endl;
+		terminate(-22);
 	}
-	
-	//  Debug
-	std::cout << "Dimensione input_buffer: " << buflen << std::endl;
-	BIO_dump_fp(stdout, (const char*)input_buffer, buflen);
-	// /Debug
 	
 	if(nonce_buffer != *((uint32_t*)input_buffer)){
-		std::cerr << "Il numero sequenziale non corrisponde" << std::endl;
-		exit(-1);
+		std::cerr << "Il numero sequenziale del client non corrisponde" << std::endl;
+		terminate(-23);
 	}
 	
 	// Inizializzo il buffer per la verifica del messaggio
@@ -410,11 +419,6 @@ int main(int argc, char* argv[]){
 	memcpy(msg_to_be_verified + ciphertextlen + encrypted_key_len, iv, iv_len);
 	memcpy(msg_to_be_verified + ciphertextlen + encrypted_key_len + iv_len, input_buffer, buflen);
 	
-	//  Debug
-	std::cout << "Dimensione msg_to_be_verified: " << msg_to_be_verified_len << std::endl;
-	BIO_dump_fp(stdout, (const char*)msg_to_be_verified, msg_to_be_verified_len);
-	// /Debug
-	
 	// Dealloco il buffer allocato nella funzione receive_data(...)
 	delete[] input_buffer;
 	input_buffer = NULL;
@@ -423,56 +427,49 @@ int main(int argc, char* argv[]){
 	unsigned char* plaintext_buffer = NULL;
 	if(decrypt_asym(ciphertext_buffer, ciphertextlen, encrypted_key, encrypted_key_len, iv, prvkey, &plaintext_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la decifratura delle chiavi simmetriche" << std::endl;
-		exit(-1);
+		terminate(-24);
 	}
 	
 	delete[] ciphertext_buffer;
 	ciphertext_buffer = NULL;
+	delete[] encrypted_key;
+	encrypted_key = NULL;
+	delete[] iv;
+	iv = NULL;
 	
 	// Salvo le chiavi simmetriche ricevute
 	session.set_key_auth(EVP_aes_128_cbc(), (char*)plaintext_buffer);
 	session.set_key_encr(EVP_aes_128_cbc(), (char*)plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
 	
-	//  Debug
-	std::cout << "Chiave di autenticazione" << std::endl;
-	input_buffer = new char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-	memset(input_buffer, 0, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-	session.get_key_auth(input_buffer);
-	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-	std::cout << "Chiave di cifratura" << std::endl;
-	session.get_key_encr(input_buffer);
-	BIO_dump_fp(stdout, (const char*)input_buffer, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
-	// /Debug
+	delete[] plaintext_buffer;
+	plaintext_buffer = NULL;
 	
 	// Ricevo la firma di ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
-	if(receive_data(TCP_socket, (char**)&input_buffer, &buflen) < 0){
+	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la ricezione della firma" << std::endl;
-		exit(-1);
+		terminate(-25);
 	}
 	
 	ret = sign_asym_verify(msg_to_be_verified, msg_to_be_verified_len, (unsigned char*)input_buffer, buflen, session.get_counterpart_pubkey());
 	if(ret < 0){// Errore interno durante la verifica
 		std::cerr << "Errore durante la verifica della firma" << std::endl;
-		exit(-1);
+		terminate(-26);
 	}
 	if(ret == 0){// Certificato non valido
 		std::cerr << "Firma non valida" << std::endl;
-		quitClient(TCP_socket);
-		exit(-1);
+		terminate(-27);
 	}
 	
-	// Ricevo il numero sequenziale
+	delete[] input_buffer;
+	input_buffer = NULL;
+	
+	// Ricevo il numero sequenziale del server
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
-		std::cerr << "Errore durante la ricezione del numero sequenziale" << std::endl;
-		exit(-1);
+		std::cerr << "Errore durante la ricezione del numero sequenziale del server" << std::endl;
+		terminate(-28);
 	}
 	
 	nonce_buffer = *((uint32_t*)input_buffer);
-	
-	//  Debug
-	std::cout << "nonce_buffer: " << std::endl;
-	BIO_dump_fp(stdout, (const char*)&nonce_buffer, buflen);
-	// /Debug
 	
 	// Salvo il numero sequenziale del server
 	session.set_counterpart_nonce(ntohl(nonce_buffer));
@@ -482,28 +479,23 @@ int main(int argc, char* argv[]){
 	// /Debug
 	
 	//===== PASSO 3 =====
-	//  Debug
-	std::cout << "nonce_output_buffer: " << std::endl;
-	BIO_dump_fp(stdout, (const char*)&nonce_buffer, sizeof(nonce_buffer));
-	//BIO_dump_fp(stdout, (const char*)&nonce_buffer, buflen);
-	// /Debug
 	
-	// Invio il numero sequenziale
+	// Invio il numero sequenziale del server
 	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
-		std::cerr<<"Errore durante l'invio del numero sequenziale del server"<<std::endl;
-		exit(-1);
+		std::cerr << "Errore durante l'invio del numero sequenziale del server" << std::endl;
+		terminate(-29);
 	}
 	
 	// Firmo il numero sequenziale ricevuto dal server
 	if(sign_asym((char*)&nonce_buffer, sizeof(nonce_buffer), prvkey, (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
-		std::cerr<<"Errore durante la firma del numero sequenziale"<<std::endl;
-		exit(-1);
+		std::cerr << "Errore durante la firma del numero sequenziale" << std::endl;
+		terminate(-30);
 	}
 	
-	// Invio il numero sequenziale
+	// Invio la firma del numero sequenziale
 	if(send_data(TCP_socket, (const char*)ciphertext_buffer, ciphertextlen) < 0){
-		std::cerr<<"Errore durante l'invio del numero sequenziale del server firmato"<<std::endl;
-		exit(-1);
+		std::cerr<<"Errore durante l'invio della firma del numero sequenziale"<<std::endl;
+		terminate(-31);
 	}
 	
 	//  Debug
@@ -560,3 +552,4 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
+		//quitClient(TCP_socket);//TODO: chiudere correttamente il client in tutti i casi di errore

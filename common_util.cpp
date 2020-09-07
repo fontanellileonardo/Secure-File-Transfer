@@ -2,7 +2,13 @@
 
 Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
 	this->fd = fd;//TODO: da usare al posto di TCP_socket
-	my_nonce = 9;//TODO: generarlo casualmente
+	
+	//char buffer[sizeof(my_nonce)];
+	if(get_random((char*)&my_nonce, sizeof(my_nonce)) < 0)
+		my_nonce = 1;
+	if(my_nonce > (UINT32_MAX / 2))
+		my_nonce = my_nonce - (UINT32_MAX / 2);
+	
 	counterpart_nonce = 0;
 }
 
@@ -136,13 +142,19 @@ int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char*
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_OpenInit(ctx, EVP_aes_128_cbc(), encrypted_key, encrypted_key_len, iv, prvkey) != 1)
+	if(EVP_OpenInit(ctx, EVP_aes_128_cbc(), encrypted_key, encrypted_key_len, iv, prvkey) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
-	if(EVP_OpenUpdate(ctx, *plaintext, &outlen, ciphertext, ciphertextlen) != 1)
+	}
+	if(EVP_OpenUpdate(ctx, *plaintext, &outlen, ciphertext, ciphertextlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
+	}
 	plainlen = outlen;
-	if(EVP_OpenFinal(ctx, *plaintext + plainlen, &outlen) != 1)
+	if(EVP_OpenFinal(ctx, *plaintext + plainlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
+	}
 	plainlen += outlen;
 	*plaintextlen = (size_t)plainlen;
 	EVP_CIPHER_CTX_free(ctx);
@@ -159,13 +171,19 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_SealInit(ctx, type, encrypted_key, (int*)encrypted_key_len, *iv, &pubkey, 1) != 1)
+	if(EVP_SealInit(ctx, type, encrypted_key, (int*)encrypted_key_len, *iv, &pubkey, 1) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
-	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) != 1)
+	}
+	if(EVP_SealUpdate(ctx, *ciphertext, &outlen, (unsigned char*)plaintext, plaintextlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
+	}
 	cipherlen = outlen;
-	if(EVP_SealFinal(ctx, *ciphertext + cipherlen, &outlen) != 1)
+	if(EVP_SealFinal(ctx, *ciphertext + cipherlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
 		return -1;
+	}
 	*ciphertextlen = (size_t)(cipherlen + outlen);
 	
 	EVP_CIPHER_CTX_free(ctx);
@@ -261,11 +279,6 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 	size_t sent = 0;
 	ssize_t ret;
 	
-	//  Debug
-	std::cout << "sending data: " << std::endl;
-	BIO_dump_fp(stdout, buffer, buflen);
-	// /Debug
-	
 	size_t buflen_n = htonl(buflen);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 	
@@ -285,12 +298,18 @@ int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned c
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_SignInit(ctx, EVP_sha256()) != 1)
+	if(EVP_SignInit(ctx, EVP_sha256()) != 1){
+		EVP_MD_CTX_free(ctx);
 		return -1;
-	if(EVP_SignUpdate(ctx, (unsigned char*)plaintext, plaintextlen) != 1)
+	}
+	if(EVP_SignUpdate(ctx, (unsigned char*)plaintext, plaintextlen) != 1){
+		EVP_MD_CTX_free(ctx);
 		return -1;
-	if(EVP_SignFinal(ctx, *signature, (unsigned int*)signaturelen, prvkey) != 1)
+	}
+	if(EVP_SignFinal(ctx, *signature, (unsigned int*)signaturelen, prvkey) != 1){
+		EVP_MD_CTX_free(ctx);
 		return -1;
+	}
 	EVP_MD_CTX_free(ctx);
 	return 0;
 }
@@ -299,10 +318,14 @@ int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, 
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_VerifyInit(ctx, EVP_sha256()) != 1)
+	if(EVP_VerifyInit(ctx, EVP_sha256()) != 1){
+		EVP_MD_CTX_free(ctx);
 		return -1;
-	if(EVP_VerifyUpdate(ctx, msg, msg_len) != 1)
+	}
+	if(EVP_VerifyUpdate(ctx, msg, msg_len) != 1){
+		EVP_MD_CTX_free(ctx);
 		return -1;
+	}
 	int ret = EVP_VerifyFinal(ctx, signature, signature_len, pubkey);
 	EVP_MD_CTX_free(ctx);
 	return ret;
@@ -323,7 +346,6 @@ int verify_cert(X509_STORE *store, X509 *cert){
 	}
 	
 	if(X509_verify_cert(cert_ctx) != 1) {
-		std::cout << "Certificato del client non valido" << std::endl;
 		X509_STORE_CTX_free(cert_ctx);
 		return 0;
 	}
