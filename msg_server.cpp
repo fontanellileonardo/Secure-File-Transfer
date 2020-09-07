@@ -350,7 +350,7 @@ int main(int argc, char *argv[]){
 					
 					// Vengono utilizzati solo nella parte di handshake
 					unsigned char* encrypted_key = NULL;
-					size_t encrypted_key_len;
+					size_t encrypted_key_len = 0;
 					unsigned char* iv = NULL;
 					
 					switch(message_type){
@@ -602,6 +602,54 @@ int main(int argc, char *argv[]){
 								std::cerr<<"Errore durante l'invio del numero sequenziale"<<std::endl;
 								exit(-1);
 							}
+							
+							//===== PASSO 3 =====
+							
+							// Ricevo i dati in ingresso (numero sequenziale del server)
+							if(receive_data(i, &input_buffer, &buflen) < 0){
+								quit_client(i, &master);
+								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
+								//printf("user disconnesso senza !quit, verra' messo offline\n");
+								continue;
+							}
+							
+							if(nonce != *((uint32_t*)input_buffer)){
+								std::cerr << "Il numero sequenziale non corrisponde" << std::endl;
+								continue;
+							}
+							
+							delete[] input_buffer;
+							input_buffer = NULL;
+							
+							// Ricevo i dati in ingresso (firma del numero sequenziale del server)
+							if(receive_data(i, &input_buffer, &buflen) < 0){
+								quit_client(i, &master);
+								std::cout<<"user disconnesso senza !quit, verra' messo offline"<<std::endl;						
+								//printf("user disconnesso senza !quit, verra' messo offline\n");
+								continue;
+							}
+							
+							//  Debug
+							std::cout << "input_buffer: " << std::endl;
+							BIO_dump_fp(stdout, (const char*)input_buffer, buflen);
+							// /Debug
+							
+							// Verifico la firma
+							ret = sign_asym_verify((unsigned char*)&nonce, sizeof(nonce), (unsigned char*)input_buffer, buflen, client->get_counterpart_pubkey());
+							if(ret < 0){// Errore interno durante la verifica
+								std::cerr << "Errore durante la verifica della firma" << std::endl;
+								quit_client(i, &master);
+								continue;
+							}
+							if(ret == 0){// Certificato non valido
+								std::cerr << "Firma non valida" << std::endl;
+								quit_client(i, &master);
+								continue;
+							}
+							
+							//  Debug
+							std::cout << "Fine handshake =============" << std::endl;
+							// /Debug
 							
 							break;
 							

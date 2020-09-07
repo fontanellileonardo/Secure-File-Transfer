@@ -450,7 +450,6 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	//TODO: verificare la firma
 	ret = sign_asym_verify(msg_to_be_verified, msg_to_be_verified_len, (unsigned char*)input_buffer, buflen, session.get_counterpart_pubkey());
 	if(ret < 0){// Errore interno durante la verifica
 		std::cerr << "Errore durante la verifica della firma" << std::endl;
@@ -461,13 +460,6 @@ int main(int argc, char* argv[]){
 		quitClient(TCP_socket);
 		exit(-1);
 	}
-	/*
-	// Ricevo il numero sequenziale
-	if(receive_data(TCP_socket, (char**)&nonce_buffer, &buflen) < 0){
-		std::cerr << "Errore durante la ricezione dell numero sequenziale" << std::endl;
-		exit(-1);
-	}
-	*/
 	
 	// Ricevo il numero sequenziale
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
@@ -487,6 +479,35 @@ int main(int argc, char* argv[]){
 	
 	//  Debug
 	std::cout << "Numero sequenziale server: " << session.get_counterpart_nonce() << std::endl;
+	// /Debug
+	
+	//===== PASSO 3 =====
+	//  Debug
+	std::cout << "nonce_output_buffer: " << std::endl;
+	BIO_dump_fp(stdout, (const char*)&nonce_buffer, sizeof(nonce_buffer));
+	//BIO_dump_fp(stdout, (const char*)&nonce_buffer, buflen);
+	// /Debug
+	
+	// Invio il numero sequenziale
+	if(send_data(TCP_socket, (const char*)&nonce_buffer, sizeof(nonce_buffer)) < 0){
+		std::cerr<<"Errore durante l'invio del numero sequenziale del server"<<std::endl;
+		exit(-1);
+	}
+	
+	// Firmo il numero sequenziale ricevuto dal server
+	if(sign_asym((char*)&nonce_buffer, sizeof(nonce_buffer), prvkey, (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
+		std::cerr<<"Errore durante la firma del numero sequenziale"<<std::endl;
+		exit(-1);
+	}
+	
+	// Invio il numero sequenziale
+	if(send_data(TCP_socket, (const char*)ciphertext_buffer, ciphertextlen) < 0){
+		std::cerr<<"Errore durante l'invio del numero sequenziale del server firmato"<<std::endl;
+		exit(-1);
+	}
+	
+	//  Debug
+	std::cout << "Fine handshake =============" << std::endl;
 	// /Debug
 	
 	user_quit = 0;

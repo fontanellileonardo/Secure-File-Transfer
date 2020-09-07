@@ -261,6 +261,11 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 	size_t sent = 0;
 	ssize_t ret;
 	
+	//  Debug
+	std::cout << "sending data: " << std::endl;
+	BIO_dump_fp(stdout, buffer, buflen);
+	// /Debug
+	
 	size_t buflen_n = htonl(buflen);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 	
