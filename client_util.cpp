@@ -36,6 +36,6 @@ void quitClient(int socket){
 	message_type = COMMAND_QUIT;
 	message_type_n = htonl(message_type);
 	send(socket, &message_type_n, sizeof(uint32_t), 0);
-	
+	close(socket);
 	return;
 }
