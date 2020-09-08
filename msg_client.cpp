@@ -278,7 +278,7 @@ int main(int argc, char* argv[]){
 	//  Debug
 	X509_NAME* abc_1 = X509_get_subject_name(client_certificate);
 	char* temp_buffer_1 = X509_NAME_oneline(abc_1, NULL, 0);
-	std::cout << "Certificato client:" << temp_buffer_1 << std::endl;
+	std::cout << "Certificato client: " << temp_buffer_1 << std::endl;
 	delete temp_buffer_1;
 	free(abc_1);
 	// /Debug
@@ -311,6 +311,7 @@ int main(int argc, char* argv[]){
 	// Recupero il numero sequenziale
 	uint32_t nonce_buffer = session.get_my_nonce();
 	if(nonce_buffer == UINT32_MAX){
+		std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
 		terminate(-12);
 	}
 	
@@ -350,7 +351,7 @@ int main(int argc, char* argv[]){
 	//  Debug
 	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);
 	char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
-	std::cout << "Certificato server:" << temp_buffer_2 << std::endl;
+	std::cout << "Certificato server: " << temp_buffer_2 << std::endl;
 	delete temp_buffer_2;
 	free(abc_2);
 	// /Debug
@@ -499,7 +500,7 @@ int main(int argc, char* argv[]){
 	}
 	
 	//  Debug
-	std::cout << "Fine handshake =============" << std::endl;
+	std::cout << "Scambio chiavi simmetriche con il server eseguito" << std::endl;
 	// /Debug
 	
 	user_quit = 0;

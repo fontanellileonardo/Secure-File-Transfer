@@ -19,6 +19,8 @@ Session::~Session(){
 		delete[] key_encr;
 	if(key_auth != NULL)
 		delete[] key_auth;
+	if(counterpart_pubkey != NULL)
+		EVP_PKEY_free(counterpart_pubkey);
 }
 
 uint32_t Session::get_counterpart_nonce(){
@@ -168,6 +170,10 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	int outlen, cipherlen;
 	*iv = new unsigned char[EVP_CIPHER_iv_length(type)];
 	
+	if(RAND_poll() != 1){
+		return -1;
+	}
+	
 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 	if(ctx == NULL)
 		return -1;
@@ -284,7 +290,7 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 	
 	while(sent < buflen){
 		ret = send(fd, buffer + sent, buflen - sent, 0);
-		std::cout << "Inviati: " << ret << " byte" << std::endl;
+		//std::cout << "Inviati: " << ret << " byte" << std::endl;
 		if(ret < 0){
 			return -1;
 		} 
