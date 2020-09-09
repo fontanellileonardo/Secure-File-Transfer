@@ -276,11 +276,10 @@ int main(int argc, char* argv[]){
 	}
 	
 	//  Debug
-	X509_NAME* abc_1 = X509_get_subject_name(client_certificate);
+	X509_NAME* abc_1 = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	char* temp_buffer_1 = X509_NAME_oneline(abc_1, NULL, 0);
 	std::cout << "Certificato client: " << temp_buffer_1 << std::endl;
 	delete temp_buffer_1;
-	free(abc_1);
 	// /Debug
 	
 	// Serializzo il certificato del client
@@ -349,11 +348,10 @@ int main(int argc, char* argv[]){
 	input_buffer = NULL;
 	
 	//  Debug
-	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);
+	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
 	std::cout << "Certificato server: " << temp_buffer_2 << std::endl;
 	delete temp_buffer_2;
-	free(abc_2);
 	// /Debug
 	
 	// Verifico il certificato

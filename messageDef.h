@@ -41,3 +41,4 @@
 #define CLIENT_PRVKEY_PASSWORD "password"
 
 #define SERVER_FOLDER_PATH "server_folder"
+#define AUTHORIZED_CLIENTS_PATH "authorized_clients.txt"
