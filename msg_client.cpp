@@ -148,10 +148,10 @@ void terminate(int value){
 		EVP_PKEY_free(server_pubkey);
 	// Dealloco il certificato del server
 	if(server_certificate != NULL)
-		free(server_certificate);
+		X509_free(server_certificate);
 	// Dealloco il certificato del client
 	if(client_certificate != NULL)
-		free(client_certificate);
+		X509_free(client_certificate);
 	// Dealloco la chiave privata
 	if(prvkey != NULL)
 		EVP_PKEY_free(prvkey);
@@ -279,7 +279,7 @@ int main(int argc, char* argv[]){
 	X509_NAME* abc_1 = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	char* temp_buffer_1 = X509_NAME_oneline(abc_1, NULL, 0);
 	std::cout << "Certificato client: " << temp_buffer_1 << std::endl;
-	delete temp_buffer_1;
+	OPENSSL_free(temp_buffer_1);
 	// /Debug
 	
 	// Serializzo il certificato del client
@@ -304,7 +304,7 @@ int main(int argc, char* argv[]){
 		terminate(-11);
 	}
 	
-	delete[] cert_buffer;
+	OPENSSL_free(cert_buffer);
 	cert_buffer = NULL;
 	
 	// Recupero il numero sequenziale
@@ -351,7 +351,7 @@ int main(int argc, char* argv[]){
 	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
 	std::cout << "Certificato server: " << temp_buffer_2 << std::endl;
-	delete temp_buffer_2;
+	OPENSSL_free(temp_buffer_2);
 	// /Debug
 	
 	// Verifico il certificato

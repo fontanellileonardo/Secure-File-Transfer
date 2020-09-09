@@ -181,16 +181,16 @@ void quit_client(unsigned int socket, fd_set* master){
 void terminate(int value){// Distruggo lo store dei certificati
 	// Dealloco il certificato del server
 	if(server_certificate != NULL)
-		free(server_certificate);
+		X509_free(server_certificate);
 	// Dealloco lo store
 	if(store != NULL)
 		X509_STORE_free(store);
 	// Dealloco il crl
 	if(crl != NULL)
-		free(crl);
+		X509_CRL_free(crl);
 	// Dealloco il certificato della CA
 	if(CA_cert != NULL)
-		free(CA_cert);
+		X509_free(CA_cert);
 	// Dealloco la chiave privata
 	if(prvkey != NULL)
 		EVP_PKEY_free(prvkey);
@@ -270,7 +270,7 @@ int main(int argc, char *argv[]){
 	abc = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	temp_buffer = X509_NAME_oneline(abc, NULL, 0);
 	std::cout << "Certificato server: " << temp_buffer << std::endl;
-	delete temp_buffer;
+	OPENSSL_free(temp_buffer);
 	temp_buffer = NULL;
 	// /Debug
 	
@@ -415,7 +415,7 @@ int main(int argc, char *argv[]){
 							abc = X509_get_subject_name(client_certificate);
 							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
 							std::cout << "Certificato client: " << temp_buffer << std::endl;
-							delete temp_buffer;
+							OPENSSL_free(temp_buffer);
 							temp_buffer = NULL;
 							// /Debug
 							
@@ -430,7 +430,7 @@ int main(int argc, char *argv[]){
 								continue;
 							}
 							
-							delete client_certificate_name_buffer;
+							OPENSSL_free(client_certificate_name_buffer);
 							client_certificate_name_buffer = NULL;
 							
 							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
@@ -495,7 +495,7 @@ int main(int argc, char *argv[]){
 								continue;
 							}
 							
-							delete[] output_buffer;
+							OPENSSL_free(output_buffer);
 							output_buffer = NULL;
 							
 							// Genero iv e le chiavi di cifratura e autenticazione
@@ -528,6 +528,7 @@ int main(int argc, char *argv[]){
 							memcpy(plaintext_buffer, ciphertext_buffer, ciphertextlen);
 							
 							delete[] ciphertext_buffer;
+							//OPENSSL_free(ciphertext_buffer);
 							ciphertext_buffer = NULL;
 							
 							// Invio le chiavi cifrate al client
