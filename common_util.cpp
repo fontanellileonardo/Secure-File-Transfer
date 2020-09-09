@@ -2,7 +2,8 @@
 
 Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
 	this->fd = fd;//TODO: da usare al posto di TCP_socket
-	
+	key_auth = NULL;
+	key_encr = NULL;
 	//char buffer[sizeof(my_nonce)];
 	if(get_random((char*)&my_nonce, sizeof(my_nonce)) < 0)
 		my_nonce = 1;
