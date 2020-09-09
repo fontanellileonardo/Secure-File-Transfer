@@ -4,7 +4,7 @@
 
 #include "common_util.h"
 #include "messageDef.h"
-//#include "server_util.h"
+#include "server_util.h"
 
 #define FRAGM_SIZE 33
 #define BLOCK_SIZE 16
@@ -19,6 +19,9 @@ X509_STORE* store = NULL;
 X509* server_certificate = NULL;
 
 int connected_user_number = 0;
+
+// list
+std::string list;
 
 /*
 // da controllare se va bene anche in c++
@@ -639,8 +642,10 @@ int main(int argc, char *argv[]){
 							
 							break;
 							
-						case COMMAND_FILELIST:
-							//TODO: implementare funzionalità
+						case COMMAND_LIST:
+							list = list_files(SERVER_FOLDER_PATH);
+							std::cout << list << std::endl;
+							
 							break;
 						case COMMAND_DOWNLOAD:
 							//decrypt(i);

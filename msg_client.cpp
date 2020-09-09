@@ -517,17 +517,14 @@ int main(int argc, char* argv[]){
 			std::cin>>buffer;		
   		   	command = identifyCommand(buffer);
 			switch(command){
+				case COMMAND_LIST:
+					std::cout << "Comando list" << std::endl;
+					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
+					break;
 				case COMMAND_HELP:
 					std::cout<<MESSAGE_USER_COMMAND_DETAILED<<std::endl;
 					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
-					break;					
-				case COMMAND_FILELIST:
-					std::cout<<"Contatto il server..."<<std::endl;
-					//printf("Contatto il server...\n");
-					//modificare con struct file
-					//struct users all_user[MAX_USER_CONNECTED];					
-					//user_count = retrieveClientList(TCP_socket, all_user);
-					break;					
+					break;				
 				case COMMAND_UPLOAD:	
 					break;						
 				case COMMAND_DOWNLOAD:

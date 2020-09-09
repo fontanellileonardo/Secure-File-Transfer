@@ -3,6 +3,9 @@
 //identifica il comando ricevuto dall'utente da tastiera
 int identifyCommand(char* command){
 
+	if(strlen(command) != 6 && strncmp(command, "!list", 5)== 0){
+		return COMMAND_LIST;
+	}
 	if(strlen(command) != 6 && strncmp(command, "!help", 5)== 0){
 		return COMMAND_HELP;
 	}
