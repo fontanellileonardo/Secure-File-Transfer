@@ -16,7 +16,7 @@
 #include "client_util.h"
 #include "common_util.h"
 
-#define FRAGM_SIZE 33
+#define FRAGM_SIZE 512000 // 512 KiB
 #define BLOCK_SIZE 16
 
 EVP_PKEY* prvkey = NULL;
@@ -24,18 +24,29 @@ X509* client_certificate = NULL;
 X509* server_certificate = NULL;
 EVP_PKEY* server_pubkey = NULL;
 
+std::fstream fp;
+
 //static size_t CIPHER_SIZE = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
-/*
 // Va bene anche in c++?
-size_t fsize(FILE* fp) {
+long long int fsize() {
+	/*
 	fseek(fp, 0, SEEK_END);
-	long int clear_size = ftell(fp);
+	long int clear_size = ftell(fp);// byte
 	fseek(fp, 0, SEEK_SET);
 	return clear_size;
+	*/
+	// Scorre fino alla fine del file in modo da calcolare la lunghezza in Byte
+	fp.seekg(0, fp.end);
+	// Conta il num di "caratteri" e quindi il numero di byte 
+	// Se la dim del file non può essere salvata in un intero -> ERRORE!!!
+	long long int fsize = fp.tellg(); 
+	// Si riposiziona all'inizio del file
+	fp.seekg(0, fp.beg);
+	return fsize;
 }
 
-int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket){	
+int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket){	
 	int i;
 	EVP_CIPHER_CTX * ctx;
 	int len = 0;
@@ -53,11 +64,22 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 	//comando per specificare operazione
 	message_type = COMMAND_DOWNLOAD;
 	umessage_type = htonl(message_type);
-	send(TCP_socket, &umessage_type, sizeof(uint32_t), 0);
+	int ret = send(TCP_socket, &umessage_type, sizeof(uint32_t), 0);
+	std::cout << "Valore di ret: "<< ret << std::endl;
+	if (ret <= 0) {
+		std::cout << "Errore nell'invio del comando"<< std::endl;
+		exit(1);
+	}
+	std::cout<<"Comando inviato: "<< message_type << std::endl;
 
 	//invio lunghezza file	
-	uint16_t ufile_len = htons(file_len);
-	send(TCP_socket, &ufile_len, sizeof(uint16_t), 0);
+	long long int ufile_len = htonl(file_len);
+	ret = send(TCP_socket, &ufile_len, sizeof(uint64_t), 0);
+	std::cout << "Valore di ret: "<< ret << std::endl;
+	if (ret <= 0) {
+		std::cout << "Errore nell'invio della grandezza del file"<< std::endl;
+		exit(1);
+	}
 	//printf("lunghezza file: %zd\n", file_len);
 	std::cout<<"lunghezza file: "<<file_len<<std::endl;
 	
@@ -66,40 +88,44 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 	//printf("sizeof buffer: %zd\n", buff_len);
 	std::cout<<"sizeof buffer: "<<buff_len<<std::endl;
 	size_t nread;
-	uint16_t ulen_cipher;
+	uint32_t ulen_cipher;
+	std::cout <<"Iterazioni da fare nel for sono:"<< (file_len/FRAGM_SIZE ) << std::endl;
 	for( i = 0; i < (file_len/FRAGM_SIZE); i++){
-		if((nread = fread(buffer, 1, sizeof(buffer), fp)) > 0){
-			//printf("plaintext is: \n");
-			std::cout<<"plaintext is:"<<std::endl;
-			BIO_dump_fp(stdout, (const char * ) buffer, buff_len);	
-			EVP_EncryptUpdate(ctx, ciphertext, &len, buffer, buff_len);
-			if(len == 0) {
-				printf("Errore nella EncryptUpdate\n");
-				exit(1);
-			}
-			ciphertext_len += len;
-			//printf(" ciphertext_len : %i,  byte criptati a questa iterazione: %i\n",ciphertext_len, len);
-			std::cout<<"ciphertext_len"<<ciphertext_len<<",byte criptati a questa iterazione: "<<len<<std::endl;
-			//printf("invio %zd\n", len);
-			ulen_cipher = htons((size_t)len);
-			send(TCP_socket, &ulen_cipher, sizeof(uint16_t), 0);
-			send(TCP_socket, ciphertext, len, 0);		
-			//printf("ciphertext is: \n");
-			std::cout<<"ciphertext is: "<<std::endl;
-			BIO_dump_fp(stdout, (const char * ) ciphertext, len);	
-			//printf("\n\n");
-			std::cout<<std::endl<<std::endl;
-		}
-		else {
-			std::cout<<"errore fread"<<std::endl;
-			//printf("errore fread\n");
+		std::cout<<"Iterazione:"<<i<<std::endl;
+		fp.read((char*)buffer,sizeof(buffer));
+		//std::cout<<"plaintext is:"<<std::endl;
+		//BIO_dump_fp(stdout, (const char * ) buffer, buff_len);	
+		EVP_EncryptUpdate(ctx, ciphertext, &len, buffer, buff_len);
+		if(len == 0) {
+			printf("Errore nella EncryptUpdate\n");
 			exit(1);
-		}					
+		}
+		ciphertext_len += len;
+		//std::cout<<"ciphertext_len"<<ciphertext_len<<",byte criptati a questa iterazione: "<<len<<std::endl;
+		//printf("invio %zd\n", len);
+		ulen_cipher = htonl(len);
+		std::cout << "grandezza chuck: " << len << std::endl;
+		int ret = send(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
+		std::cout << "Valore di ret nell'invio della grandezza del chunck: "<< ret << std::endl;
+		if (ret != sizeof(uint32_t)) {
+			std::cout << "Errore nell'invio della grandezza del chunck"<< std::endl;
+			exit(1);
+		}
+		std::cout<<"grandezza chunck in bit: "<< ulen_cipher << std::endl;
+		ret = send(TCP_socket, ciphertext, len, 0);
+		std::cout << "Valore di ret nell'invio del chunck: "<< ret << std::endl;
+		if (ret != len) {
+			std::cout << "Errore nell'invio del chunck"<< std::endl;
+			exit(1);
+		}		
+		std::cout<<"ciphertext is: "<<std::endl;
+		//BIO_dump_fp(stdout, (const char * ) ciphertext, len);	
+		std::cout<<std::endl<<std::endl;				
 	}
-	//printf("file_len mod FRAGM_SIZE: %ld\n", (file_len % FRAGM_SIZE));
+	std::cout << "Sono fuori dal for" << std::endl;
 	int index = 0;
 	if (file_len % FRAGM_SIZE != 0) {
-		nread = fread(buffer, 1, (file_len%FRAGM_SIZE), fp);
+		fp.read((char*)buffer,(file_len%FRAGM_SIZE));
         EVP_EncryptUpdate(ctx, &ciphertext[index], &len, buffer, file_len%FRAGM_SIZE);
 		index +=len;
 		//printf("Grandezza del file non è multiplo di 16. Len è: %d\n",len);
@@ -115,14 +141,25 @@ int encryptAndSendFile(FILE* fp,size_t file_len, unsigned char* key, unsigned ch
 	len += index;	
 	//printf("ciphertext_len is after final: %i. Len è: %d\n", ciphertext_len, len);
 	// DUBBIO: ciphertext qui può essere più grande di len. E' un problema?
-	BIO_dump_fp(stdout, (const char * ) ciphertext, len);
-	ulen_cipher = htons((size_t)len);
-	send(TCP_socket, &ulen_cipher, sizeof(uint16_t), 0);
+	//BIO_dump_fp(stdout, (const char * ) ciphertext, len);
+	ulen_cipher = htonl((size_t)len);
+	std::cout<<"grandezza chunck dopo send: "<< ntohl(ulen_cipher) << std::endl;
+	ret = send(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
+	std::cout << "Valore di ret nell'invio della grandezza del chunck: "<< ret << std::endl;
+	if (ret != sizeof(uint32_t)) {
+		std::cout << "Errore nell'invio della grandezza del chunck"<< std::endl;
+		exit(1);
+	}
 	// DUBBIO: ciphertext potrebbe essere più grande. Ma send invia solamente len bit? 
-	send(TCP_socket, ciphertext, len, 0);	
+	ret = send(TCP_socket, ciphertext, len, 0);	
+	std::cout << "Valore di ret nell'invio del chunck: "<< ret << std::endl;
+	if (ret != len) {
+		std::cout << "Errore nell'invio del chunck"<< std::endl;
+		exit(1);
+	}
 	//clean context
 	EVP_CIPHER_CTX_free(ctx);
-	fclose(fp);
+	fp.close();
 	return ciphertext_len;
 }
 
@@ -132,15 +169,19 @@ void encrypt(int TCP_socket){
 	//printf("in encript\n");
 	// in realtà dovrebbe essere grande quanto il maggior multiplo di 16 che FRAGM_SIZE riesce ad avere
 	size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
-	unsigned char ciphertext[dim_ct + BLOCK_SIZE];
+	unsigned char ciphertext[dim_ct + BLOCK_SIZE + 1];
 	//TESTING DIMENSION FILE
-	FILE* fp = fopen("fileprova.txt", "r+");
-	size_t ssst = fsize(fp);
+	//FILE* fp = fopen("fileprova.txt", "r+");
+	//FILE* fp = fopen("ice.jpg", "r+");
+	std::string fileName = "fileprova.txt";
+	fp.open(fileName.c_str(), std::fstream::in | std::fstream::binary);
+	if(!fp) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
+	long long int ssst = fsize();
+	std::cout<<"dim file in encrypt: " << ssst << std::endl;
 	unsigned char* iv;
-	encryptAndSendFile(fp,ssst, key, iv, ciphertext, TCP_socket);
+	encryptAndSendFile(ssst, key, iv, ciphertext, TCP_socket);
 	
 }
-*/
 
 void terminate(int value){
 	// Dealloco la chiave pubblica del server
@@ -531,7 +572,7 @@ int main(int argc, char* argv[]){
 				case COMMAND_UPLOAD:	
 					break;						
 				case COMMAND_DOWNLOAD:
-					//encrypt(TCP_socket);
+					encrypt(TCP_socket);
 					break;
 				case COMMAND_QUIT:
 					quitClient(TCP_socket);
