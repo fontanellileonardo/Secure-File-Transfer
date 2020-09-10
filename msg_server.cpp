@@ -54,7 +54,7 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 	uint len_cipher;
 	unsigned int i;
 	int fw;
-	FILE *fpp = fopen("fileprovaricez.txt", "w");
+	FILE *fpp = fopen("icericez.jpg", "w");
 	//FILE *fpp = fopen("icericez.jpg", "w");
 	std::cout <<"Iterazioni da fare nel for sono:"<< (file_len/FRAGM_SIZE ) << std::endl;
 	int ret;
@@ -96,7 +96,7 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
   	}
 	std::cout<<"Sono fuori dal for"<<std::endl;
 	//printf("i alla fine del for: %d\n",i);
-	ret = recv(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
+	ret = recv(TCP_socket, &ulen_cipher, sizeof(uint32_t), MSG_WAITALL);
 	std::cout << "Valore di ret nella ricezione della grandezza del chunck: "<< ret << std::endl; 
 	if(ret == -1) {
 		std::cout<<"Errore nella ricezione del chunk" << std::endl;
@@ -106,7 +106,7 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 	// DUBBIO: qui dovrei allocare dinamicamente un nuovo array ciphertext di lunghezza len_cipher
 	ret = recv(TCP_socket, ciphertext, len_cipher, MSG_WAITALL); 	
 	std::cout << "Valore di ret nella ricezione del chunck: "<< ret << std::endl; 
-	if(ret == -1) {
+	if(ret != len_cipher) {
 		std::cout<<"Errore nella ricezione del chunk" << std::endl;
 		exit(1);
 	}	
@@ -115,8 +115,7 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 
 	// ultimo dato ricevuto potrebbe essere o solo padding, o contenente anche del plaintext significativo	
 	if (file_len % FRAGM_SIZE != 0) {
-		for (uint j = 0; j < len_cipher; j+=BLOCK_SIZE) {
-			if( !EVP_DecryptUpdate(dctx, plaintext, &dlen, &ciphertext[j], BLOCK_SIZE)) {
+		if( !EVP_DecryptUpdate(dctx, plaintext, &dlen, ciphertext, len_cipher)) {
 				//printf("errore nella DecryptUpdate. dlen: %d\n",dlen);
 				std::cout<<"errore nella DecryptUpdate. dlen: "<<dlen<<std::endl;
 				exit(1);
@@ -125,27 +124,25 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 			plaintext_len +=dlen;
 			//printf("plaintext_len  :%i dlen: %d\n", plaintext_len,dlen);
 			fw = fwrite(plaintext, 1, dlen, fpp);
-			//printf("scritti %i bytes \n", fw);
-			//printf("plain is: %d\n",dlen);
-			//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);	
-			//printf("\n");
-			//std::cout<<std::endl;
-		}
 	}	
 
-  //printf("plain is BEFORE FINAL:\n");
+  	//printf("plain is BEFORE FINAL:\n");
 	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);
-  //decrypt finalize
-	if( 1 != EVP_DecryptFinal(dctx, plaintext, &dlen)) {
+  	//decrypt finalize
+	std::cout << "byte decriptati nell'ultimo frammento prima della final: "<< dlen << std::endl;
+	if( 1 != EVP_DecryptFinal(dctx, (unsigned char*)plaintext, &dlen)) {
 		//printf("errore final. dlen è: %d\n",dlen);
 		std::cout<<"errore final. dlen è: "<<dlen<<std::endl;
 		exit(1);
 	}
+	std::cout << "byte decriptati con la final: "<< dlen << std::endl;
 	plaintext_len += dlen;
+	std::cout << "byte decriptati in totatle: "<< plaintext_len << std::endl;
 	// qui dovrei controllare che dlen non sia 0 altrimenti è inutile scrivere nel file
 	//printf("plain is AFTER FINAL:\n");
 	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);
-	fw = fwrite(plaintext, 1, dlen, fpp);
+	if(dlen != 0)
+		fw = fwrite(plaintext, 1, dlen, fpp);
 	//printf("plain is: %d\n", dlen);
 	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);	
 	fclose(fpp);

@@ -173,7 +173,7 @@ void encrypt(int TCP_socket){
 	//TESTING DIMENSION FILE
 	//FILE* fp = fopen("fileprova.txt", "r+");
 	//FILE* fp = fopen("ice.jpg", "r+");
-	std::string fileName = "fileprova.txt";
+	std::string fileName = "ice.jpg";
 	fp.open(fileName.c_str(), std::fstream::in | std::fstream::binary);
 	if(!fp) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
 	long long int ssst = fsize();
