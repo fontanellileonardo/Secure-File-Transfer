@@ -1,7 +1,7 @@
 #define COMMAND_HELP 1
 #define COMMAND_UPLOAD 2
 #define COMMAND_DOWNLOAD 3
-#define COMMAND_FILELIST 4
+#define COMMAND_LIST 4
 #define COMMAND_QUIT 5
 #define COMMAND_INVALID 6
 
@@ -25,7 +25,7 @@
 
 #define MESSAGE_INVALID_COMMAND "Comando non valido"
 
-#define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !help\n !upload filename\n !download\n !quit\n\n"
+#define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !help\n !list\n !upload filename\n !download\n !quit\n\n"
 
 #define MESSAGE_USER_COMMAND_DETAILED "\n!help ->visualizza i comandi disponibili\n !upload filename -> upload file chiamato filename sul server\n !download filename -> download filename dal server\n !list -> visualizza i file disponibili e la loro dimensione\n !quit -> disconnette l'utente dal server ed esce\n\n"
 
@@ -39,3 +39,6 @@
 
 #define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
 #define CLIENT_PRVKEY_PASSWORD "password"
+
+#define SERVER_FOLDER_PATH "server_folder"
+#define AUTHORIZED_CLIENTS_PATH "authorized_clients.txt"

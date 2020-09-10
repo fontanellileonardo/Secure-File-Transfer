@@ -4,7 +4,7 @@
 
 #include "common_util.h"
 #include "messageDef.h"
-//#include "server_util.h"
+#include "server_util.h"
 
 #define FRAGM_SIZE 512000 // 512 KiB
 #define BLOCK_SIZE 16
@@ -168,16 +168,16 @@ void quit_client(unsigned int socket, fd_set* master){
 void terminate(int value){// Distruggo lo store dei certificati
 	// Dealloco il certificato del server
 	if(server_certificate != NULL)
-		free(server_certificate);
+		X509_free(server_certificate);
 	// Dealloco lo store
 	if(store != NULL)
 		X509_STORE_free(store);
 	// Dealloco il crl
 	if(crl != NULL)
-		free(crl);
+		X509_CRL_free(crl);
 	// Dealloco il certificato della CA
 	if(CA_cert != NULL)
-		free(CA_cert);
+		X509_free(CA_cert);
 	// Dealloco la chiave privata
 	if(prvkey != NULL)
 		EVP_PKEY_free(prvkey);
@@ -254,12 +254,11 @@ int main(int argc, char *argv[]){
 	}
 	
 	//  Debug
-	abc = X509_get_subject_name(server_certificate);
+	abc = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
 	temp_buffer = X509_NAME_oneline(abc, NULL, 0);
 	std::cout << "Certificato server: " << temp_buffer << std::endl;
-	delete temp_buffer;
+	OPENSSL_free(temp_buffer);
 	temp_buffer = NULL;
-	free(abc);
 	// /Debug
 	
 	//===== Creazione socket =====
@@ -353,6 +352,8 @@ int main(int argc, char *argv[]){
 					uint8_t message_type;
 					uint32_t nonce;
 					int ret;
+					X509_NAME* client_certificate_name = NULL;
+					char* client_certificate_name_buffer = NULL;
 					
 					X509* client_certificate = NULL;
 					EVP_PKEY* client_pubkey = NULL;
@@ -401,10 +402,25 @@ int main(int argc, char *argv[]){
 							abc = X509_get_subject_name(client_certificate);
 							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
 							std::cout << "Certificato client: " << temp_buffer << std::endl;
-							delete temp_buffer;
+							OPENSSL_free(temp_buffer);
 							temp_buffer = NULL;
-							free(abc);
 							// /Debug
+							
+							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
+							
+							// Verifico se il client è autorizzato
+							client_certificate_name = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
+							client_certificate_name_buffer = X509_NAME_oneline(client_certificate_name, NULL, 0);
+							if(!is_authorized(AUTHORIZED_CLIENTS_PATH, std::string(client_certificate_name_buffer))){
+								std::cout << "Client non autorizzato" << std::endl;
+								quit_client(i, &master);
+								continue;
+							}
+							
+							OPENSSL_free(client_certificate_name_buffer);
+							client_certificate_name_buffer = NULL;
+							
+							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
 							
 							// Verifico il certificato
 							ret = verify_cert(store, client_certificate);
@@ -466,7 +482,7 @@ int main(int argc, char *argv[]){
 								continue;
 							}
 							
-							delete[] output_buffer;
+							OPENSSL_free(output_buffer);
 							output_buffer = NULL;
 							
 							// Genero iv e le chiavi di cifratura e autenticazione
@@ -499,6 +515,7 @@ int main(int argc, char *argv[]){
 							memcpy(plaintext_buffer, ciphertext_buffer, ciphertextlen);
 							
 							delete[] ciphertext_buffer;
+							//OPENSSL_free(ciphertext_buffer);
 							ciphertext_buffer = NULL;
 							
 							// Invio le chiavi cifrate al client
@@ -629,8 +646,10 @@ int main(int argc, char *argv[]){
 							
 							break;
 							
-						case COMMAND_FILELIST:
-							//TODO: implementare funzionalità
+						case COMMAND_LIST:
+							list = list_files(SERVER_FOLDER_PATH);
+							std::cout << list << std::endl;
+							
 							break;
 						case COMMAND_DOWNLOAD:
 							decrypt(i);
