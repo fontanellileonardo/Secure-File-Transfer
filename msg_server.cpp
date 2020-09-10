@@ -48,13 +48,13 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 	//decrypt update, one call is enough because our message is very short
 	
 	// string o lasciare unsigned char??
-	unsigned char* ciphertext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE + 1];
-	unsigned char* plaintext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE + 1];
+	unsigned char* ciphertext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE];
+	unsigned char* plaintext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE];
 	uint32_t ulen_cipher;
 	uint len_cipher;
 	unsigned int i;
 	int fw;
-	FILE *fpp = fopen("icericez.jpg", "w");
+	FILE *fpp = fopen("server_files/ice.jpg", "w");
 	//FILE *fpp = fopen("icericez.jpg", "w");
 	std::cout <<"Iterazioni da fare nel for sono:"<< (file_len/FRAGM_SIZE ) << std::endl;
 	int ret;

@@ -150,8 +150,8 @@ void encrypt(int TCP_socket){
 	unsigned char *key = (unsigned char*) "0123456789012345";
 	// in realtà dovrebbe essere grande quanto il maggior multiplo di 16 che FRAGM_SIZE riesce ad avere
 	size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
-	unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE + 1];
-	std::string fileName = "ice.jpg";
+	unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
+	std::string fileName = "client_files/ice.jpg";
 	fp.open(fileName.c_str(), std::fstream::in | std::fstream::binary);
 	if(!fp) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
 	long long int ssst = fsize();
