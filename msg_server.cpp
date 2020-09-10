@@ -48,8 +48,8 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 	//decrypt update, one call is enough because our message is very short
 	
 	// string o lasciare unsigned char??
-	unsigned char ciphertext[CIPHER_SIZE + BLOCK_SIZE + 1];
-	unsigned char plaintext[CIPHER_SIZE + BLOCK_SIZE + 1];
+	unsigned char* ciphertext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE + 1];
+	unsigned char* plaintext = new unsigned char[CIPHER_SIZE + BLOCK_SIZE + 1];
 	uint32_t ulen_cipher;
 	uint len_cipher;
 	unsigned int i;
@@ -69,33 +69,23 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 		len_cipher = ntohl(ulen_cipher);
 		std::cout << "ulen_cipher dopo la recv: " << ulen_cipher << std::endl;
 		std::cout << "grandezza chuck tradotta: " << len_cipher << std::endl;
-		// DUBBIO: per farlo bene forse qui si dovrebbe allora un buffer in memoria dinamica di dimensione len_cipher
 		// Aspetto che sia ricevuto tutto il ciphertext
-		ret = recv(TCP_socket, &ciphertext, len_cipher, MSG_WAITALL);
+		ret = recv(TCP_socket, ciphertext, len_cipher, MSG_WAITALL);
 		std::cout << "Valore di ret nella ricezione del cipher: "<< ret << std::endl; 
 		if(ret != len_cipher) {
 			std::cout<<"Errore nella ricezione del chunk" << std::endl;
 			exit(1);
 		}
-		//std::cout << "Ciphertext received is: " << std::endl;
-		//BIO_dump_fp(stdout, (const char * ) ciphertext, len_cipher);
 		if(!EVP_DecryptUpdate(dctx, plaintext, &dlen, ciphertext, len_cipher)) {
-			//printf("errore nella DecryptUpdate. dlen: %d\n",dlen);
 			std::cout<<"errore nella DecryptUpdate. dlen: "<<dlen<<std::endl;
 			exit(1);
 		}
-		// DUBBIO: anche se dlen è 32 plaintext_len è 16... Perchè??
 		plaintext_len +=dlen;
-		//printf("plaintext_len  :%i dlen: %d\n", plaintext_len,dlen);
 		fw = fwrite(plaintext, 1, dlen, fpp);
-		//printf("scritti %i bytes \n", fw);
 		std::cout<<"plain size is: "<<dlen<<std::endl;
-		//printf("plain is: %d\n",dlen);
-		//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);
 		std::cout<<std::endl;	
   	}
 	std::cout<<"Sono fuori dal for"<<std::endl;
-	//printf("i alla fine del for: %d\n",i);
 	ret = recv(TCP_socket, &ulen_cipher, sizeof(uint32_t), MSG_WAITALL);
 	std::cout << "Valore di ret nella ricezione della grandezza del chunck: "<< ret << std::endl; 
 	if(ret == -1) {
@@ -103,53 +93,39 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 		exit(1);
 	}	
 	len_cipher = ntohl(ulen_cipher);
-	// DUBBIO: qui dovrei allocare dinamicamente un nuovo array ciphertext di lunghezza len_cipher
 	ret = recv(TCP_socket, ciphertext, len_cipher, MSG_WAITALL); 	
 	std::cout << "Valore di ret nella ricezione del chunck: "<< ret << std::endl; 
 	if(ret != len_cipher) {
 		std::cout<<"Errore nella ricezione del chunk" << std::endl;
 		exit(1);
 	}	
-	//printf("ciphertext received out the for is: %ld\n", len_cipher);
-	//BIO_dump_fp(stdout, (const char * ) ciphertext, len_cipher);
-
 	// ultimo dato ricevuto potrebbe essere o solo padding, o contenente anche del plaintext significativo	
 	if (file_len % FRAGM_SIZE != 0) {
 		if( !EVP_DecryptUpdate(dctx, plaintext, &dlen, ciphertext, len_cipher)) {
-				//printf("errore nella DecryptUpdate. dlen: %d\n",dlen);
 				std::cout<<"errore nella DecryptUpdate. dlen: "<<dlen<<std::endl;
 				exit(1);
 			}
-			// DUBBIO: anche se dlen è 32 plaintext_len è 16... Perchè??
 			plaintext_len +=dlen;
-			//printf("plaintext_len  :%i dlen: %d\n", plaintext_len,dlen);
 			fw = fwrite(plaintext, 1, dlen, fpp);
 	}	
-
-  	//printf("plain is BEFORE FINAL:\n");
-	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);
   	//decrypt finalize
 	std::cout << "byte decriptati nell'ultimo frammento prima della final: "<< dlen << std::endl;
 	if( 1 != EVP_DecryptFinal(dctx, (unsigned char*)plaintext, &dlen)) {
-		//printf("errore final. dlen è: %d\n",dlen);
 		std::cout<<"errore final. dlen è: "<<dlen<<std::endl;
 		exit(1);
 	}
 	std::cout << "byte decriptati con la final: "<< dlen << std::endl;
 	plaintext_len += dlen;
 	std::cout << "byte decriptati in totatle: "<< plaintext_len << std::endl;
-	// qui dovrei controllare che dlen non sia 0 altrimenti è inutile scrivere nel file
-	//printf("plain is AFTER FINAL:\n");
-	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);
 	if(dlen != 0)
 		fw = fwrite(plaintext, 1, dlen, fpp);
-	//printf("plain is: %d\n", dlen);
-	//BIO_dump_fp(stdout, (const char * ) plaintext, dlen);	
 	fclose(fpp);
 	//clean context decr
-	//printf("print prima\n");
 	EVP_CIPHER_CTX_free(dctx);
-	//printf("print dopo\n");
+	delete[] ciphertext;
+	memset(plaintext, 0, FRAGM_SIZE);
+	delete[] plaintext;
+
 	return 0;	
 }
 
