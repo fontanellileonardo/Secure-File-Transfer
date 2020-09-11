@@ -6,7 +6,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <fstream>
 
+#include "messageDef.h"
 
 class Session{
 	private:
@@ -60,3 +62,7 @@ int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned c
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int send_data(unsigned int fd, const char* buffer, size_t buflen);
 int verify_cert(X509_STORE *store, X509 *cert);
+void encrypt(int TCP_socket);
+int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket);
+int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv);
+void decrypt(int TCP_socket);
