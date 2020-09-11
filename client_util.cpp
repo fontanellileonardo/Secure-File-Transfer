@@ -12,6 +12,9 @@ int identifyCommand(char* command){
 	if(strlen(command) != 6 && strncmp(command, "!quit", 5)== 0){
 		return COMMAND_QUIT;
 	}
+	if(strlen(command) != 8 && strncmp(command, "!upload", 7) == 0){
+		return COMMAND_UPLOAD;
+	}
 	if(strlen(command) != 10 && strncmp(command, "!download", 9) == 0)
 		return COMMAND_DOWNLOAD;
 	return COMMAND_INVALID;

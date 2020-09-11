@@ -607,9 +607,18 @@ int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
 	return 0;	
 }
 
-void decrypt(int TCP_socket){
+void decrypt(int TCP_socket, char* fileName){
 	unsigned char *key = (unsigned char*) "0123456789012345";
 	unsigned char* iv;
 	decryptAndWriteFile(TCP_socket, key, iv);
 	//printf("sono fuori dal for\n");
+}
+
+bool checkFile(std::string filePath){
+	if (FILE *file = fopen(filePath.c_str(), "r")) {
+        fclose(file);
+        return true;
+    } else {
+        return false;
+    }   
 }

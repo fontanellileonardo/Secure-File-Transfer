@@ -14,6 +14,9 @@ X509* server_certificate = NULL;
 
 int connected_user_number = 0;
 
+// list
+std::string list;
+
 std::vector<Session*> clients;
 
 Session *get_client_by_fd(unsigned int fd){
@@ -85,7 +88,6 @@ int main(int argc, char *argv[]){
 	// Controllo che ci siano tutti i parametri necessari
 	if(argc != 2){
 		std::cout << "Inserire la porta" << std::endl;
-		//printf("Inserire la porta\n");
 		return 1;
 	}
 	
@@ -284,7 +286,6 @@ int main(int argc, char *argv[]){
 							temp_buffer = NULL;
 							// /Debug
 							
-							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
 							
 							// Verifico se il client è autorizzato
 							client_certificate_name = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
@@ -298,7 +299,6 @@ int main(int argc, char *argv[]){
 							OPENSSL_free(client_certificate_name_buffer);
 							client_certificate_name_buffer = NULL;
 							
-							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
 							
 							// Verifico il certificato
 							ret = verify_cert(store, client_certificate);

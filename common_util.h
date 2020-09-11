@@ -66,3 +66,4 @@ void encrypt(int TCP_socket);
 int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket);
 int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv);
 void decrypt(int TCP_socket);
+bool checkFile(std::string filePath);

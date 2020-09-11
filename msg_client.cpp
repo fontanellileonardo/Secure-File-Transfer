@@ -49,6 +49,7 @@ int main(int argc, char* argv[]){
 	uint8_t message_type;
 	int command;
 	char buffer[MAX_COMMAND_INPUT];
+	char buffer2[MAX_FILE_INPUT] = "";
 	int ret;
 	
 	//controllo che ci siano tutti i parametri necessari
@@ -386,7 +387,9 @@ int main(int argc, char* argv[]){
 			// controllare come prendere byte da tastiera
 			// SLIDE 11-12 SECURECODING
 			//fgets(buffer, sizeof(buffer), stdin);	
-			std::cin>>buffer;		
+			std::cin>>buffer>>buffer2;
+			std::cout << "Buffer 1: " << buffer << std::endl;
+			std::cout << "Buffer 2: " << buffer2 << std::endl; 
   		   	command = identifyCommand(buffer);
 			switch(command){
 				case COMMAND_LIST:
@@ -397,10 +400,22 @@ int main(int argc, char* argv[]){
 					std::cout<<MESSAGE_USER_COMMAND_DETAILED<<std::endl;
 					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
 					break;				
-				case COMMAND_UPLOAD:	
+				case COMMAND_UPLOAD:{
+					std::string filePath = "";
+					filePath.append("client_Files/");
+					filePath.append(buffer2);
+					std::cout << "File desiderato: " << filePath << std::endl;
+					// Controllo che il file richiesto sia presente nella cartella "client_files"
+					if(!checkFile(filePath))
+						std::cerr << "Il file inserito non è presente nel sistema" << std::endl;
+					else {
+						std::cout << "File trovato. Upload in corso...";
+						//encrypt(TCP_socket, std::string filePath); 
+					}
+				}
 					break;						
 				case COMMAND_DOWNLOAD:
-					encrypt(TCP_socket);
+					
 					break;
 				case COMMAND_QUIT:
 					quitClient(TCP_socket);

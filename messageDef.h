@@ -1,7 +1,7 @@
 #define COMMAND_HELP 1
 #define COMMAND_UPLOAD 2
 #define COMMAND_DOWNLOAD 3
-#define COMMAND_FILELIST 4
+#define COMMAND_LIST 4
 #define COMMAND_QUIT 5
 #define COMMAND_INVALID 6
 
@@ -19,6 +19,9 @@
 
 #define MAX_COMMAND_INPUT 80
 //numero di caratteri inseribili dall'utente quando vuole dare un comando
+
+#define MAX_FILE_INPUT 80
+//numero di caratteri inseribili dall'utente quando inserisce il nome di un file
 
 #define MAX_CHAR_INPUT 1024
 //numero massimo di caratteri inseribili per messaggio in una linea senza andare a capo
@@ -45,11 +48,7 @@
 #define SERVER_PRVKEY_PASSWORD "password"
 
 #define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
-<<<<<<< HEAD
-#define CLIENT_PRVKEY_PASSWORD "password"
-=======
 #define CLIENT_PRVKEY_PASSWORD "password"
 
 #define SERVER_FOLDER_PATH "server_folder"
 #define AUTHORIZED_CLIENTS_PATH "authorized_clients.txt"
->>>>>>> 549a3ea0ee346d8ea65123f49e920b88b8060f11
