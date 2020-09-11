@@ -142,7 +142,7 @@ void encrypt(int TCP_socket){
 }
 */
 
-void terminate(int value){
+void terminate(int value){//TODO: gestire la deallocazione del socket
 	// Dealloco la chiave pubblica del server
 	if(server_pubkey != NULL)
 		EVP_PKEY_free(server_pubkey);
@@ -247,6 +247,12 @@ int main(int argc, char* argv[]){
 		terminate(-5);
 	}
 	
+	// Imposto il timeout sul socket
+	struct timeval timeout;
+	timeout.tv_sec = 10;
+	timeout.tv_usec = 0;
+	setsockopt(TCP_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+	
 	// Creazione oggetto utilizzato per contenere le informazioni sulla connessione
 	Session session = Session(TCP_socket);
 	
@@ -311,6 +317,7 @@ int main(int argc, char* argv[]){
 	uint32_t nonce_buffer = session.get_my_nonce();
 	if(nonce_buffer == UINT32_MAX){
 		std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+		send_error(TCP_socket);
 		terminate(-12);
 	}
 	
@@ -334,45 +341,51 @@ int main(int argc, char* argv[]){
 		terminate(-14);
 	}
 	
-	// Deserializzo il certificato del server appena ricevuto
-	// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
-	char* temp_buffer_deser = input_buffer;
-	server_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer_deser, buflen);
-	if(server_certificate == NULL){
-		std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
-		terminate(-15);
-	}
-	
-	// Dealloco il buffer allocato nella funzione receive_data(...)
-	delete[] input_buffer;
-	input_buffer = NULL;
-	
-	//  Debug
-	X509_NAME* abc_2 = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
-	char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
-	std::cout << "Certificato server: " << temp_buffer_2 << std::endl;
-	OPENSSL_free(temp_buffer_2);
-	// /Debug
-	
-	// Verifico il certificato
-	ret = verify_cert(store, server_certificate);
-	if(ret < 0){// Errore interno durante la verifica
-		terminate(-16);
-	}
-	if(ret == 0){
-		std::cout << "Certificato del server non valido" << std::endl;
-		terminate(-17);
-	}
-	
-	// Estraggo la chiave pubblica del server dal certificato
-	server_pubkey = NULL;
-	server_pubkey = X509_get_pubkey(server_certificate);
-	if(server_pubkey == NULL){
-		std::cerr << "Errore durante l'estrazione della chiave pubblica del server" << std::endl;
-		terminate(-18);
+	if(buflen > 0){
+		// Deserializzo il certificato del server appena ricevuto
+		// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
+		char* temp_buffer_deser = input_buffer;
+		server_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer_deser, buflen);
+		if(server_certificate == NULL){
+			std::cerr << "Errore durante la deserializzazione del certificato del server" << std::endl;
+			terminate(-15);
+		}
+		
+		// Dealloco il buffer allocato nella funzione receive_data(...)
+		delete[] input_buffer;
+		input_buffer = NULL;
+		
+		//  Debug
+		X509_NAME* abc_2 = X509_get_subject_name(server_certificate);// The returned value is an internal pointer which MUST NOT be freed
+		char* temp_buffer_2 = X509_NAME_oneline(abc_2, NULL, 0);
+		std::cout << "Certificato server: " << temp_buffer_2 << std::endl;
+		OPENSSL_free(temp_buffer_2);
+		// /Debug
+		
+		// Verifico il certificato
+		ret = verify_cert(store, server_certificate);
+		if(ret < 0){// Errore interno durante la verifica
+			terminate(-16);
+		}
+		if(ret == 0){
+			std::cout << "Certificato del server non valido" << std::endl;
+			terminate(-17);
+		}
+		
+		// Estraggo la chiave pubblica del server dal certificato
+		server_pubkey = NULL;
+		server_pubkey = X509_get_pubkey(server_certificate);
+		if(server_pubkey == NULL){
+			std::cerr << "Errore durante l'estrazione della chiave pubblica del server" << std::endl;
+			terminate(-18);
+		}
+		else{
+			session.set_counterpart_pubkey(server_pubkey);
+		}
 	}
 	else{
-		session.set_counterpart_pubkey(server_pubkey);
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
 	}
 	
 	// Ricevo i dati in ingresso (chiavi simmetriche cifrate)
@@ -383,12 +396,22 @@ int main(int argc, char* argv[]){
 		terminate(-19);
 	}
 	
+	if(ciphertextlen == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
+	}
+	
 	// Ricevo i dati in ingresso (encrypted_key)
 	size_t encrypted_key_len;
 	unsigned char* encrypted_key = NULL;
 	if(receive_data(TCP_socket, (char**)&encrypted_key, &encrypted_key_len) < 0){
 		std::cerr << "Errore durante la ricezione di encrypted_key" << std::endl;
 		terminate(-20);
+	}
+	
+	if(encrypted_key_len == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
 	}
 	
 	// Ricevo i dati in ingresso (IV)
@@ -399,14 +422,25 @@ int main(int argc, char* argv[]){
 		terminate(-21);
 	}
 	
+	if(iv_len == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
+	}
+	
 	// Ricevo i dati in ingresso (nonce)
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la ricezione del numero sequenziale del client" << std::endl;
 		terminate(-22);
 	}
 	
+	if(buflen == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
+	}
+	
 	if(nonce_buffer != *((uint32_t*)input_buffer)){
 		std::cerr << "Il numero sequenziale del client non corrisponde" << std::endl;
+		send_error(TCP_socket);
 		terminate(-23);
 	}
 	
@@ -426,6 +460,7 @@ int main(int argc, char* argv[]){
 	unsigned char* plaintext_buffer = NULL;
 	if(decrypt_asym(ciphertext_buffer, ciphertextlen, encrypted_key, encrypted_key_len, iv, prvkey, &plaintext_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la decifratura delle chiavi simmetriche" << std::endl;
+		send_error(TCP_socket);
 		terminate(-24);
 	}
 	
@@ -449,13 +484,20 @@ int main(int argc, char* argv[]){
 		terminate(-25);
 	}
 	
+	if(buflen == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
+	}
+	
 	ret = sign_asym_verify(msg_to_be_verified, msg_to_be_verified_len, (unsigned char*)input_buffer, buflen, session.get_counterpart_pubkey());
 	if(ret < 0){// Errore interno durante la verifica
 		std::cerr << "Errore durante la verifica della firma" << std::endl;
+		send_error(TCP_socket);
 		terminate(-26);
 	}
 	if(ret == 0){// Certificato non valido
 		std::cerr << "Firma non valida" << std::endl;
+		send_error(TCP_socket);
 		terminate(-27);
 	}
 	
@@ -466,6 +508,11 @@ int main(int argc, char* argv[]){
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
 		std::cerr << "Errore durante la ricezione del numero sequenziale del server" << std::endl;
 		terminate(-28);
+	}
+	
+	if(buflen == 0){
+		std::cout << "Errore di comunicazione con il server" << std::endl;
+		terminate(-100);
 	}
 	
 	nonce_buffer = *((uint32_t*)input_buffer);

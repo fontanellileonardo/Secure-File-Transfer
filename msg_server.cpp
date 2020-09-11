@@ -160,7 +160,11 @@ Session *get_client_by_fd(unsigned int fd){
 }
 
 //pone l'utente in stato offline e chiude la connessione tcp
-void quit_client(unsigned int socket, fd_set* master){
+void quit_client(unsigned int socket, fd_set* master, bool notify_error){//TODO: comunicare al client che c'è stato un errore
+	if(notify_error){
+		send_error(socket);
+	}
+	
 	close(socket);
 	FD_CLR(socket, master);
 	
@@ -174,6 +178,7 @@ void quit_client(unsigned int socket, fd_set* master){
 	}
 	
 	connected_user_number--;
+	std::cout << "Client con file descriptor " << socket << " disconnesso" << std::endl;
 	
 	return;	
 }
@@ -326,6 +331,12 @@ int main(int argc, char *argv[]){
 						continue;
 					}
 					
+					// Imposto il timeout sul nuovo socket
+					struct timeval timeout;
+					timeout.tv_sec = 10;
+					timeout.tv_usec = 0;
+					setsockopt(newfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+					
 					// Add "newfd" socket to the "master" set and update "socket counter"
 					FD_SET(newfd, &master);
 					if(newfd > fdmax)
@@ -381,7 +392,7 @@ int main(int argc, char *argv[]){
 					
 					// Ricevo comando
 					if(recv(i, &message_type, sizeof(message_type), 0) <= 0){
-						quit_client(i, &master);
+						quit_client(i, &master, false);
 						std::cout << "Client disconnesso senza !quit, verra' messo offline" << std::endl;
 						continue; //passo al prossimo fd pronto
 					}
@@ -393,89 +404,99 @@ int main(int argc, char *argv[]){
 							// Ricevo i dati in ingresso (certificato)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);//TODO: potrebbe accadere perchè il client si è già disconnesso, quindi forse non serve segnalare l'errore
 								continue;
 							}
 							
-							// Deserializzo il certificato del client appena ricevuto
-							// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
-							temp_buffer = input_buffer;
-							client_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer, buflen);
-							if(client_certificate == NULL){
-								std::cerr << "Errore durante la deserializzazione del certificato del client" << std::endl;
-								quit_client(i, &master);
-								continue;
-							}
-							
-							// Dealloco il buffer allocato nella funzione receive_data(...)
-							delete[] input_buffer;
-							input_buffer = NULL;
-							
-							//  Debug
-							abc = X509_get_subject_name(client_certificate);
-							temp_buffer = X509_NAME_oneline(abc, NULL, 0);
-							std::cout << "Certificato client: " << temp_buffer << std::endl;
-							OPENSSL_free(temp_buffer);
-							temp_buffer = NULL;
-							// /Debug
-							
-							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
-							
-							// Verifico se il client è autorizzato
-							client_certificate_name = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
-							client_certificate_name_buffer = X509_NAME_oneline(client_certificate_name, NULL, 0);
-							if(!is_authorized(AUTHORIZED_CLIENTS_PATH, std::string(client_certificate_name_buffer))){
-								std::cout << "Client non autorizzato" << std::endl;
-								quit_client(i, &master);
-								continue;
-							}
-							
-							OPENSSL_free(client_certificate_name_buffer);
-							client_certificate_name_buffer = NULL;
-							
-							//printf("Checkpoint 1. client_certificate address: %p, value: %p\n", &client_certificate, client_certificate);
-							
-							// Verifico il certificato
-							ret = verify_cert(store, client_certificate);
-							if(ret < 0){// Errore interno durante la verifica
-								quit_client(i, &master);
-								continue;
-							}
-							if(ret == 0){// Certificato non valido
-								std::cout << "Certificato del client non valido" << std::endl;
-								quit_client(i, &master);
-								continue;
-							}
-							
-							// Estraggo la chiave pubblica del client dal certificato
-							client_pubkey = X509_get_pubkey(client_certificate);
-							if(client_pubkey == NULL){
-								std::cerr << "Errore durante l'estrazione della chiave pubblica del client" << std::endl;
-								quit_client(i, &master);
-								continue;
+							if(buflen > 0){
+								// Deserializzo il certificato del client appena ricevuto
+								// d2i_X509(...) incrementa il puntatore, è necessario conservarne il valore originale per deallocarlo successivamente
+								temp_buffer = input_buffer;
+								client_certificate = d2i_X509(NULL, (const unsigned char**)&temp_buffer, buflen);
+								if(client_certificate == NULL){
+									std::cerr << "Errore durante la deserializzazione del certificato del client" << std::endl;
+									quit_client(i, &master, true);
+									continue;
+								}
+								
+								// Dealloco il buffer allocato nella funzione receive_data(...)
+								delete[] input_buffer;
+								input_buffer = NULL;
+								
+								//  Debug
+								abc = X509_get_subject_name(client_certificate);
+								temp_buffer = X509_NAME_oneline(abc, NULL, 0);
+								std::cout << "Certificato client: " << temp_buffer << std::endl;
+								OPENSSL_free(temp_buffer);
+								temp_buffer = NULL;
+								// /Debug
+								
+								// Verifico se il client è autorizzato
+								client_certificate_name = X509_get_subject_name(client_certificate);// The returned value is an internal pointer which MUST NOT be freed
+								client_certificate_name_buffer = X509_NAME_oneline(client_certificate_name, NULL, 0);
+								if(!is_authorized(AUTHORIZED_CLIENTS_PATH, std::string(client_certificate_name_buffer))){
+									std::cout << "Client non autorizzato" << std::endl;
+									quit_client(i, &master, true);
+									continue;
+								}
+								
+								OPENSSL_free(client_certificate_name_buffer);
+								client_certificate_name_buffer = NULL;
+								
+								// Verifico il certificato
+								ret = verify_cert(store, client_certificate);
+								if(ret < 0){// Errore interno durante la verifica
+									quit_client(i, &master, true);
+									continue;
+								}
+								if(ret == 0){// Certificato non valido
+									std::cout << "Certificato del client non valido" << std::endl;
+									quit_client(i, &master, true);
+									continue;
+								}
+								
+								// Estraggo la chiave pubblica del client dal certificato
+								client_pubkey = X509_get_pubkey(client_certificate);
+								if(client_pubkey == NULL){
+									std::cerr << "Errore durante l'estrazione della chiave pubblica del client" << std::endl;
+									quit_client(i, &master, true);
+									continue;
+								}
+								else{
+									client->set_counterpart_pubkey(client_pubkey);
+								}
 							}
 							else{
-								client->set_counterpart_pubkey(client_pubkey);
+								std::cout << "Errore di comunicazione con il client" << std::endl;
+								quit_client(i, &master, false);
+								continue;
 							}
 							
 							// Ricevo i dati in ingresso (nonce)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del numero sequenziale del client" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);//TODO: potrebbe accadere perchè il client si è già disconnesso, quindi forse non serve segnalare l'errore
 								continue;
 							}
 							
-							// Salvo il numero sequenziale del client
-							nonce = *((uint32_t*)input_buffer);
-							client->set_counterpart_nonce(ntohl(nonce));
-							
-							//  Debug
-							std::cout << "Numero sequenziale client: " << ntohl(nonce) << std::endl;
-							// /Debug
-							
-							// Dealloco il buffer allocato nella funzione receive_data(...)
-							delete[] input_buffer;
-							input_buffer = NULL;
+							if(buflen > 0){
+								// Salvo il numero sequenziale del client
+								nonce = *((uint32_t*)input_buffer);
+								client->set_counterpart_nonce(ntohl(nonce));
+								
+								//  Debug
+								std::cout << "Numero sequenziale client: " << ntohl(nonce) << std::endl;
+								// /Debug
+								
+								// Dealloco il buffer allocato nella funzione receive_data(...)
+								delete[] input_buffer;
+								input_buffer = NULL;
+							}
+							else{
+								std::cout << "Errore di comunicazione con il client" << std::endl;
+								quit_client(i, &master, false);
+								continue;
+							}
 							
 							//===== PASSO 2 =====
 							
@@ -484,14 +505,14 @@ int main(int argc, char *argv[]){
 							cert_size = i2d_X509(server_certificate, (unsigned char**)&output_buffer);
 							if(cert_size < 0){
 								std::cerr << "Errore nella serializzazione del certificato" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
 							// Invio il certificato
 							if(send_data(i, output_buffer, cert_size) < 0){
 								std::cerr << "Errore durante l'invio del certificato" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -501,7 +522,7 @@ int main(int argc, char *argv[]){
 							// Genero iv e le chiavi di cifratura e autenticazione
 							if(client->initialize(EVP_aes_128_cbc()) < 0){
 								std::cerr << "Errore durante la generazione delle chiavi simmetriche" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
@@ -513,7 +534,7 @@ int main(int argc, char *argv[]){
 							// Cifro le chiavi simmetriche
 							if(encrypt_asym(plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen, &encrypted_key, &encrypted_key_len, &iv) < 0){
 								std::cerr << "Errore durante la cifratura delle chiavi simmetriche" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
@@ -528,13 +549,12 @@ int main(int argc, char *argv[]){
 							memcpy(plaintext_buffer, ciphertext_buffer, ciphertextlen);
 							
 							delete[] ciphertext_buffer;
-							//OPENSSL_free(ciphertext_buffer);
 							ciphertext_buffer = NULL;
 							
 							// Invio le chiavi cifrate al client
 							if(send_data(i, plaintext_buffer, ciphertextlen) < 0){
 								std::cerr << "Errore durante l'invio delle chiavi simmetriche cifrate" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
@@ -547,7 +567,7 @@ int main(int argc, char *argv[]){
 							// Invio encrypted_key al client
 							if(send_data(i, (plaintext_buffer + ciphertextlen), encrypted_key_len) < 0){
 								std::cerr << "Errore durante l'invio di encrypted_key" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -560,7 +580,7 @@ int main(int argc, char *argv[]){
 							// Invio IV al client
 							if(send_data(i, (plaintext_buffer + ciphertextlen + encrypted_key_len), EVP_CIPHER_iv_length(EVP_aes_128_cbc())) < 0){
 								std::cerr << "Errore durante l'invio di IV" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -570,14 +590,14 @@ int main(int argc, char *argv[]){
 							// Invio il numero sequenziale al client
 							if(send_data(i, (const char*)&nonce, sizeof(nonce)) < 0){
 								std::cerr << "Errore durante l'invio del numero sequenziale del client" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
 							// Firmo l'insieme dei dati ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
 							if(sign_asym(plaintext_buffer, buflen, prvkey, (unsigned char**)&ciphertext_buffer, &ciphertextlen) < 0){
 								std::cerr << "Errore durante la firma digitale" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
@@ -587,7 +607,7 @@ int main(int argc, char *argv[]){
 							// Invio la firma di ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
 							if(send_data(i, ciphertext_buffer, ciphertextlen) < 0){
 								std::cerr << "Errore durante l'invio della firma" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -598,7 +618,7 @@ int main(int argc, char *argv[]){
 							nonce = client->get_my_nonce();
 							if(nonce == UINT32_MAX){
 								std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, true);
 								continue;
 							}
 							
@@ -611,7 +631,7 @@ int main(int argc, char *argv[]){
 							// Invio il numero sequenziale
 							if(send_data(i, (const char*)&nonce, sizeof(nonce)) < 0){
 								std::cerr << "Errore durante l'invio del numero sequenziale del server" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -620,42 +640,56 @@ int main(int argc, char *argv[]){
 							// Ricevo i dati in ingresso (numero sequenziale del server)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del numero sequenziale del server" << std::endl;
-								quit_client(i, &master);
+								quit_client(i, &master, false);
 								continue;
 							}
 							
-							if(nonce != *((uint32_t*)input_buffer)){
-								std::cerr << "Il numero sequenziale del server non corrisponde" << std::endl;
-								quit_client(i, &master);
+							if(buflen > 0){
+								if(nonce != *((uint32_t*)input_buffer)){
+									std::cerr << "Il numero sequenziale del server non corrisponde" << std::endl;
+									quit_client(i, &master, false);
+									continue;
+								}
+							
+								delete[] input_buffer;
+								input_buffer = NULL;
+							}
+							else{
+								std::cout << "Errore di comunicazione con il client" << std::endl;
+								quit_client(i, &master, false);
 								continue;
 							}
 							
-							delete[] input_buffer;
-							input_buffer = NULL;
-							
-							// Ricevo i dati in ingresso (firma del numero sequenziale del server)
-							if(receive_data(i, &input_buffer, &buflen) < 0){
-								std::cerr << "Errore durante la ricezione della firma del numero sequenziale del server" << std::endl;
-								quit_client(i, &master);
+							if(buflen > 0){
+								// Ricevo i dati in ingresso (firma del numero sequenziale del server)
+								if(receive_data(i, &input_buffer, &buflen) < 0){
+									std::cerr << "Errore durante la ricezione della firma del numero sequenziale del server" << std::endl;
+									quit_client(i, &master, false);
+									continue;
+								}
+								
+								// Verifico la firma
+								ret = sign_asym_verify((unsigned char*)&nonce, sizeof(nonce), (unsigned char*)input_buffer, buflen, client->get_counterpart_pubkey());
+								if(ret < 0){
+									std::cerr << "Errore durante la verifica della firma" << std::endl;
+									quit_client(i, &master, false);
+									continue;
+								}
+								if(ret == 0){
+									std::cerr << "Firma non valida" << std::endl;
+									quit_client(i, &master, false);
+									continue;
+								}
+								
+								//  Debug
+								std::cout << "Scambio chiavi simmetriche con il client eseguito" << std::endl;
+								// /Debug
+							}
+							else{
+								std::cout << "Errore di comunicazione con il client" << std::endl;
+								quit_client(i, &master, false);
 								continue;
 							}
-							
-							// Verifico la firma
-							ret = sign_asym_verify((unsigned char*)&nonce, sizeof(nonce), (unsigned char*)input_buffer, buflen, client->get_counterpart_pubkey());
-							if(ret < 0){
-								std::cerr << "Errore durante la verifica della firma" << std::endl;
-								quit_client(i, &master);
-								continue;
-							}
-							if(ret == 0){
-								std::cerr << "Firma non valida" << std::endl;
-								quit_client(i, &master);
-								continue;
-							}
-							
-							//  Debug
-							std::cout << "Scambio chiavi simmetriche con il client eseguito" << std::endl;
-							// /Debug
 							
 							break;
 							
@@ -671,11 +705,10 @@ int main(int argc, char *argv[]){
 							//TODO: implementare funzionalità	
 							break;
 						case COMMAND_QUIT:
-							quit_client(i, &master);
+							quit_client(i, &master, false);
 							break;
 						default:
 							std::cout<<"errore nella comunicazione con il client"<<std::endl;
-							//printf("errore nella comunicazione con il client\n");
 							continue;		
 					}// switch
 				}// else

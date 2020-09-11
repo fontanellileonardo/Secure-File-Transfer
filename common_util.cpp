@@ -260,8 +260,11 @@ int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
 		return -1;
 	}
 	*buflen = ntohl(buflen_n);
-	if(*buflen <= 0)
+	if(*buflen < 0)
 		return -1;
+	
+	if(*buflen == 0)
+		return 0;
 	
 	// Alloco il buffer per i dati in ingresso
 	*input_buffer = new char[*buflen];
@@ -298,6 +301,11 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 		sent += ret;
 	}
 	return (sent == buflen)?0:(-1);
+}
+
+void send_error(unsigned int fd){
+	size_t buflen_n = htonl(0);
+	send(fd, &buflen_n, sizeof(buflen_n), 0);
 }
 
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen){
