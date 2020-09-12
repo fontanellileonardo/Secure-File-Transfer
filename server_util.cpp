@@ -23,14 +23,17 @@ bool is_authorized(std::string authorized_clients, std::string client){
 std::string list_files(std::string path){
 	DIR* folder = opendir(path.c_str());
 	struct dirent* dp;
-	std::string temp;
+	std::string temp, size;
 	std::string ret = std::string("File disponibili sul server:\n");
 	while((dp = readdir(folder)) != NULL){
 		char *filename = dp->d_name;
 		if(filename[0] == '.')
 			continue;
 		temp = std::string(filename);
+		size = get_file_size_string(path+"/"+filename);
 		ret += " * "+temp;
+		ret += "\t"+size;
+		ret += "\n";
 	}
 	closedir(folder);
 	return ret;

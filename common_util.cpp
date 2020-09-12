@@ -280,6 +280,54 @@ int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned c
 	return 0;
 }
 
+size_t get_file_size(std::string filename){
+	size_t file_size = 0;
+	std::ifstream file(filename, std::ios::binary);
+	if(file){
+		file.seekg(0, std::ios::end);
+		file_size = file.tellg();
+		file.close();
+	}
+	std::cout << "file_size: " << file_size << std::endl;
+	return file_size;
+}
+
+std::string get_file_size_string(std::string filename){
+	size_t size = get_file_size(filename);
+	size_t divider = 1;
+	std::string unit;
+	
+	if(size > (1024 * 1024 * 1024)){
+		divider = (1024 * 1024 * 1024);
+		unit = " Gb";
+	}
+	else if(size > (1024 * 1024)){
+		divider = (1024 * 1024);
+		unit = " Mb";
+	}
+	else if(size > 1024){
+		divider = 1024;
+		unit = " Kb";
+	}
+	else{
+		return std::to_string(size) + " Byte";
+	}
+	
+	std::string integer_part = std::to_string(size / divider);
+	
+	if((size % divider) > 9){
+		std::string decimal_part = std::to_string(size % divider);
+		return integer_part + "." + decimal_part.substr(0, 2) + unit;
+	}
+	else if((size % divider) > 0){
+		std::string decimal_part = std::to_string(size % divider);
+		return integer_part + "." + decimal_part.substr(0, 1) + unit;
+	}
+	else{
+		return integer_part + unit;
+	}
+}
+
 // Scrive buflen byte pseudocasuali in buffer
 int get_random(char* buffer, size_t buflen){
 	if(RAND_poll() != 1){

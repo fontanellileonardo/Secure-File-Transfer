@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arpa/inet.h>
+#include <fstream>
 #include <iostream>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
@@ -67,6 +68,8 @@ int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char*
 int decrypt_symm(unsigned char* ciphertext, size_t cipherlen, unsigned char** plaintext, size_t* plaintextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv);
 int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, size_t* encrypted_key_len, unsigned char** iv);
 int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned char** ciphertext, size_t* ciphertextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv);
+size_t get_file_size(std::string filename);
+std::string get_file_size_string(std::string filename);
 int get_random(char* buffer, size_t buflen);
 int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len);
 int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest);
