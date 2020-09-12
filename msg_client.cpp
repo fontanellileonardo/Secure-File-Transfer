@@ -389,7 +389,7 @@ int main(int argc, char* argv[]){
 			std::cin>>buffer;		
   		   	command = identifyCommand(buffer);
 			switch(command){
-				case COMMAND_LIST:
+				case COMMAND_FILELIST:
 					std::cout << "Comando list" << std::endl;
 					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
 					break;

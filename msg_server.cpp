@@ -14,6 +14,9 @@ X509* server_certificate = NULL;
 
 int connected_user_number = 0;
 
+// list
+std::string list;
+
 std::vector<Session*> clients;
 
 Session *get_client_by_fd(unsigned int fd){
@@ -524,7 +527,7 @@ int main(int argc, char *argv[]){
 							
 							break;
 							
-						case COMMAND_LIST:
+						case COMMAND_FILELIST:
 							list = list_files(SERVER_FOLDER_PATH);
 							std::cout << list << std::endl;
 							

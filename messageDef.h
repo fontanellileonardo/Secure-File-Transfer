@@ -1,3 +1,4 @@
+// TODO: ma che dite, lo cambiamo il nome di questo file? Dato che ci si è messo tutte le costanti in generale
 #define COMMAND_HELP 1
 #define COMMAND_UPLOAD 2
 #define COMMAND_DOWNLOAD 3
@@ -26,6 +27,8 @@
 #define FRAGM_SIZE 512000 // 512 KiB
 #define BLOCK_SIZE 16
 
+#define HASH_KEY_LENGTH 32   // 32 byte
+
 #define CLIENT_FILES_PATH "client_files"
 
 #define SERVER_FILES_PATH "server_files"
@@ -45,11 +48,7 @@
 #define SERVER_PRVKEY_PASSWORD "password"
 
 #define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
-<<<<<<< HEAD
-#define CLIENT_PRVKEY_PASSWORD "password"
-=======
 #define CLIENT_PRVKEY_PASSWORD "password"
 
 #define SERVER_FOLDER_PATH "server_folder"
 #define AUTHORIZED_CLIENTS_PATH "authorized_clients.txt"
->>>>>>> 549a3ea0ee346d8ea65123f49e920b88b8060f11
