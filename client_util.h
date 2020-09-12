@@ -11,9 +11,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h> //conversione little-big endian 
 
+#include "common_util.h"
 #include "messageDef.h"
 
-int identifyCommand(char* command);
+uint8_t identifyCommand(char* command);
 void print_available_commands();
 void print_prompt();
+void send_command(uint8_t command, Session &session);
 void quitClient(int socket);

@@ -1,7 +1,7 @@
 #include "common_util.h"
 
 Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
-	this->fd = fd;//TODO: da usare al posto di TCP_socket
+	this->fd = fd;
 	key_auth = NULL;
 	key_encr = NULL;
 	//char buffer[sizeof(my_nonce)];
@@ -14,8 +14,6 @@ Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_
 }
 
 Session::~Session(){
-	if(iv != NULL)
-		delete[] iv;
 	if(key_encr != NULL)
 		delete[] key_encr;
 	if(key_auth != NULL)
@@ -24,8 +22,35 @@ Session::~Session(){
 		EVP_PKEY_free(counterpart_pubkey);
 }
 
+bool CustomBN::initialize(char* buffer, size_t size){
+	if(size != 16)
+		return false;
+	memcpy(&counter_1, buffer, sizeof(counter_1));
+	memcpy(&counter_0,  buffer + sizeof(counter_1), sizeof(counter_0));
+	return true;
+}
+
+bool CustomBN::get_next(char* buffer, size_t size){
+	if(size < 16)
+		return false;
+	
+	if(counter_0 == UINT64_MAX){
+		if(counter_1 == UINT64_MAX)
+			counter_1 = 0;
+		else
+			counter_1++;
+		counter_0 = 0;
+	}
+	else
+		counter_0++;
+	
+	memcpy(buffer, &counter_1, sizeof(counter_1));
+	memcpy(buffer + sizeof(counter_1), &counter_0, sizeof(counter_0));
+	return true;
+}
+
 uint32_t Session::get_counterpart_nonce(){
-	return counterpart_nonce++;
+	return ++counterpart_nonce;
 }
 
 EVP_PKEY* Session::get_counterpart_pubkey(){
@@ -36,12 +61,8 @@ unsigned int Session::get_fd(){
 	return fd;
 }
 
-int Session::get_iv(char* buffer){
-	if(iv == NULL)
-		return -1;
-
-	memcpy(buffer, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
-	return 0;
+bool Session::get_iv(char* buffer, size_t size){
+	return iv.get_next(buffer, size);
 }
 
 int Session::get_key_auth(char* buffer){
@@ -61,16 +82,10 @@ int Session::get_key_encr(char* buffer){
 }
 
 uint32_t Session::get_my_nonce(){
-	return my_nonce++;
+	return ++my_nonce;
 }
 
 int Session::initialize(const EVP_CIPHER *type){
-	/*
-	iv = new char[EVP_CIPHER_iv_length(type)];
-	if(get_random(iv, EVP_CIPHER_iv_length(type)) < 0)
-		return -1;
-	*/
-	
 	key_encr = new char[EVP_CIPHER_key_length(type)];
 	if(get_random(key_encr, EVP_CIPHER_key_length(type)) < 0)
 		return -1;
@@ -88,6 +103,15 @@ void Session::set_counterpart_nonce(uint32_t nonce){
 
 void Session::set_counterpart_pubkey(EVP_PKEY *pubkey){
 	counterpart_pubkey = pubkey;
+}
+
+int Session::set_iv(const EVP_CIPHER *type, char* iv_buffer){
+	if(iv_buffer == NULL)
+		return -1;
+	
+	if(!iv.initialize(iv_buffer, EVP_CIPHER_iv_length(type)))
+		return -1;
+	return 0;
 }
 
 int Session::set_key_auth(const EVP_CIPHER *type, char* key){
@@ -164,6 +188,37 @@ int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char*
 	return 0;
 }
 
+int decrypt_symm(unsigned char* ciphertext, size_t cipherlen, unsigned char** plaintext, size_t* plaintextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv){
+	int plainlen;
+	int outlen;
+	
+	*plaintext = new unsigned char[cipherlen + 16];
+	
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_DecryptInit(ctx, type, key, iv) !=1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	
+	if(EVP_DecryptUpdate(ctx, *plaintext, &outlen, ciphertext, cipherlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	plainlen = outlen;
+	
+	if(EVP_DecryptFinal(ctx, *plaintext + plainlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	plainlen += outlen;
+	
+	*plaintextlen = (size_t)plainlen;
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
+}
+
 int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, size_t *encrypted_key_len, unsigned char** iv){
 	*encrypted_key_len = EVP_PKEY_size(pubkey);
 	*encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];
@@ -197,6 +252,34 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	return 0;
 }
 
+int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned char** ciphertext, size_t* ciphertextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv){
+	*ciphertext = new unsigned char[plaintextlen + 1 + EVP_CIPHER_block_size(type)];
+	int cipherlen;
+	int outlen;
+	
+	EVP_CIPHER_CTX* ctx;
+	ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_EncryptInit(ctx, type, key, iv) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	if(EVP_EncryptUpdate(ctx, *ciphertext, &outlen, plaintext, plaintextlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	cipherlen = outlen;
+	if(EVP_EncryptFinal(ctx, *ciphertext + cipherlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	*ciphertextlen = (size_t)(cipherlen + outlen);
+	
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
+}
+
 // Scrive buflen byte pseudocasuali in buffer
 int get_random(char* buffer, size_t buflen){
 	if(RAND_poll() != 1){
@@ -206,6 +289,49 @@ int get_random(char* buffer, size_t buflen){
 		return -1;
 	}
 	return 0;
+}
+
+int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len){
+	unsigned int digestlen;
+	*digest = new unsigned char[EVP_MD_size(EVP_sha256())];
+	
+	EVP_MD_CTX* ctx;
+	ctx = EVP_MD_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_DigestInit(ctx, EVP_sha256()) != 1){
+		EVP_MD_CTX_free(ctx);
+		return -1;
+	}
+	if(EVP_DigestUpdate(ctx, msg, msg_len) != 1){
+		EVP_MD_CTX_free(ctx);
+		return -1;
+	}
+	if(EVP_DigestFinal(ctx, *digest, &digestlen) != 1){
+		EVP_MD_CTX_free(ctx);
+		return -1;
+	}
+	*digest_len = (size_t)digestlen;
+	
+	EVP_MD_CTX_free(ctx);
+	return 0;
+}
+
+int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest){
+	unsigned char* digest;
+	size_t digest_len;
+	
+	if(hash_bytes(msg, msg_len, &digest, &digest_len) < 0)
+		return -1;
+	
+	if(CRYPTO_memcmp(digest, received_digest, digest_len) == 0){
+		delete[] digest;
+		return 1;
+	}
+	else{
+		delete[] digest;
+		return 0;
+	}
 }
 
 //Carica il certificato come file .pem

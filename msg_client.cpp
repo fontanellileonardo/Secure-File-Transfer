@@ -24,6 +24,8 @@ X509* client_certificate = NULL;
 X509* server_certificate = NULL;
 EVP_PKEY* server_pubkey = NULL;
 
+int TCP_socket;
+
 //static size_t CIPHER_SIZE = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
 /*
@@ -142,7 +144,9 @@ void encrypt(int TCP_socket){
 }
 */
 
-void terminate(int value){//TODO: gestire la deallocazione del socket
+void terminate(int value){
+	if(TCP_socket)
+		close(TCP_socket);
 	// Dealloco la chiave pubblica del server
 	if(server_pubkey != NULL)
 		EVP_PKEY_free(server_pubkey);
@@ -161,15 +165,13 @@ void terminate(int value){//TODO: gestire la deallocazione del socket
 }
 
 int main(int argc, char* argv[]){
-	
-	int TCP_socket;
 	struct sockaddr_in sv_addr;
 	//int message_type;
 	int user_quit;
 	size_t buflen;
 	char* input_buffer = NULL;
 	uint8_t message_type;
-	int command;
+	uint8_t command;
 	char buffer[MAX_COMMAND_INPUT];
 	int ret;
 	//int ris;
@@ -297,10 +299,12 @@ int main(int argc, char* argv[]){
 		terminate(-9);
 	}
 	
-	// Invio il certificato serializzato e il numero sequenziale, preceduti dal byte che indica il tipo di messaggio
-	message_type = HANDSHAKE_1;
-	if(send(TCP_socket, &message_type, sizeof(message_type), 0) != sizeof(message_type)){
-		std::cerr << "Errore durante l'invio di message_type" << std::endl;
+	// Invio i byte che indicano il tipo di messaggio (HANDSHAKE)
+	size_t command_len = 4 + 16 + 32;// numero sequenziale + comando cifrato + hash(numero sequenziale, comando cifrato)
+	unsigned char handshake_command[command_len];
+	memset(handshake_command, 0, command_len);
+	if(send(TCP_socket, &handshake_command, command_len, 0) != (int)command_len){
+		std::cerr << "Errore durante l'inizializzazione della connessione sicura" << std::endl;
 		terminate(-10);
 	}
 	
@@ -468,15 +472,16 @@ int main(int argc, char* argv[]){
 	ciphertext_buffer = NULL;
 	delete[] encrypted_key;
 	encrypted_key = NULL;
-	delete[] iv;
-	iv = NULL;
 	
-	// Salvo le chiavi simmetriche ricevute
+	// Salvo le chiavi simmetriche ricevute e IV
 	session.set_key_auth(EVP_aes_128_cbc(), (char*)plaintext_buffer);
 	session.set_key_encr(EVP_aes_128_cbc(), (char*)plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	session.set_iv(EVP_aes_128_cbc(), (char*)iv);
 	
 	delete[] plaintext_buffer;
 	plaintext_buffer = NULL;
+	delete[] iv;
+	iv = NULL;
 	
 	// Ricevo la firma di ({chiavi simmetriche}Kek, {Kek}Ka+, IV, numero_sequenziale)
 	if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
@@ -564,7 +569,50 @@ int main(int argc, char* argv[]){
 			switch(command){
 				case COMMAND_LIST:
 					std::cout << "Comando list" << std::endl;
-					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
+					{
+						send_command(COMMAND_LIST, session);
+						/*
+						// Ricevo i dati in ingresso (lista file)
+						if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
+							std::cerr << "Errore durante la ricezione della lista dei file" << std::endl;
+							terminate(-1);
+						}
+						
+						// Controllo se il numero sequenziale è corretto
+						uint32_t client_nonce = session.get_counterpart_nonce();
+						if(client_nonce != ntohl(*((uint32_t*)input_buffer))){
+							std::cout << "Errore sequence number" << std::endl;
+							return -1;
+						}
+						
+						// Controllo l'hash
+						int ret = hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen + EVP_MD_size(EVP_sha256())));
+						if(ret < 1)
+							std::cout << "Errore hash" << std::endl;
+							return ret;
+						
+						// Decripto il comando
+						unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+						session.get_key_encr((char*)key_encr_buffer);
+						unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+						session.get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+						
+						unsigned char* plaintext;
+						size_t plaintextlen;
+						if(decrypt_symm((unsigned char*)(input_buffer + 4), (buflen - (4 + EVP_MD_size(EVP_sha256()))), &plaintext, &plaintextlen, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
+							std::cout << "Errore decrypt" << std::endl;
+							return -1;
+						}
+						
+						std::cout << plaintext << std::endl;
+						
+						// Dealloco il buffer allocato nella funzione receive_data(...)
+						delete[] input_buffer;
+						input_buffer = NULL;
+						delete[] plaintext;
+						plaintext = NULL;
+						*/
+					}
 					break;
 				case COMMAND_HELP:
 					std::cout<<MESSAGE_USER_COMMAND_DETAILED<<std::endl;
@@ -586,13 +634,11 @@ int main(int argc, char* argv[]){
 		}
 		
 		if(FD_ISSET(TCP_socket, &read_fds)){// Input dalla rete
+		//TODO: controllare che byte arrivano per capire se è una disconnessione causata dalla quit_client() sul server
 		//il server si e' disconnesso
-			std::cout<<"Ci sono problemi con il server, ci scusiamo per il disagio"<<std::endl;
-			//printf("\nCi sono problemi con il server, ci scusiamo per il disagio\n");
+			std::cout<<"Input dalla rete"<<std::endl;
 			return 0;
 		}
 	}
 	return 0;
 }
-
-		//quitClient(TCP_socket);//TODO: chiudere correttamente il client in tutti i casi di errore

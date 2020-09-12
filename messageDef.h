@@ -5,7 +5,7 @@
 #define COMMAND_QUIT 5
 #define COMMAND_INVALID 6
 
-#define HANDSHAKE_1 100
+#define HANDSHAKE 100
 
 
 #define MESSAGE_STORED_END 15

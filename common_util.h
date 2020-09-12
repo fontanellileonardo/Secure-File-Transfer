@@ -1,3 +1,5 @@
+#pragma once
+
 #include <arpa/inet.h>
 #include <iostream>
 #include <openssl/pem.h>
@@ -7,13 +9,23 @@
 #include <string.h>
 #include <sys/socket.h>
 
+class CustomBN{
+	private:
+		uint64_t counter_0;
+		uint64_t counter_1;
+
+	public:
+		CustomBN(){};
+		bool initialize(char* buffer, size_t size);
+		bool get_next(char* buffer, size_t size);
+};
 
 class Session{
 	private:
 		int fd;
 		uint32_t counterpart_nonce;
 		EVP_PKEY* counterpart_pubkey;
-		char* iv;
+		CustomBN iv;
 		char* key_encr;
 		char* key_auth;
 		uint32_t my_nonce;
@@ -28,8 +40,8 @@ class Session{
 		EVP_PKEY* get_counterpart_pubkey();
 		// Restituisce il numero del file descriptor
 		unsigned int get_fd();
-		// Restituisce IV
-		int get_iv(char* buffer);
+		// Scrive in buffer il valore di IV
+		bool get_iv(char* buffer, size_t size);
 		// Restituisce il mio numero di sequenza
 		uint32_t get_my_nonce();
 		// Restituisce la chiave simmetrica di autenticazione
@@ -42,6 +54,8 @@ class Session{
 		void set_counterpart_nonce(uint32_t nonce);
 		// Salva la chiave pubblica del server
 		void set_counterpart_pubkey(EVP_PKEY *pubkey);
+		// Salva il valore IV
+		int set_iv(const EVP_CIPHER *type, char* iv_buffer);
 		// Salva la chiave simmetrica di autenticazione
 		int set_key_auth(const EVP_CIPHER *type, char* key);
 		// Salva la chiave simmetrica di cifratura
@@ -50,8 +64,12 @@ class Session{
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl);
 int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char* encrypted_key, size_t encrypted_key_len, unsigned char* iv, EVP_PKEY* prvkey, unsigned char** plaintext, size_t* plaintextlen);
+int decrypt_symm(unsigned char* ciphertext, size_t cipherlen, unsigned char** plaintext, size_t* plaintextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv);
 int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, size_t* encrypted_key_len, unsigned char** iv);
+int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned char** ciphertext, size_t* ciphertextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv);
 int get_random(char* buffer, size_t buflen);
+int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len);
+int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest);
 int load_cert(std::string filename, X509 **cert);
 int load_crl(std::string filename, X509_CRL** crl);
 int load_private_key(std::string filename, std::string password, EVP_PKEY** prvkey);

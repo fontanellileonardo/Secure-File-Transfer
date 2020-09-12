@@ -20,9 +20,6 @@ X509* server_certificate = NULL;
 
 int connected_user_number = 0;
 
-// list
-std::string list;
-
 /*
 // da controllare se va bene anche in c++
 size_t fsize(FILE* fp){
@@ -387,20 +384,30 @@ int main(int argc, char *argv[]){
 					size_t encrypted_key_len = 0;
 					unsigned char* iv = NULL;
 					
+					/* TODO: togliere
+					// Vengono utilizzati per la cifratura simmetrica
+					char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+					char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+					*/
+					
 					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
 					Session *client = get_client_by_fd(i);
 					
 					// Ricevo comando
-					if(recv(i, &message_type, sizeof(message_type), 0) <= 0){
+					ret = recv_command(message_type, client);
+					if(ret < 0){
 						quit_client(i, &master, false);
-						std::cout << "Client disconnesso senza !quit, verra' messo offline" << std::endl;
+						continue; //passo al prossimo fd pronto
+					}
+					else if(ret == 0){
+						std::cout << "Comando sconosciuto" << std::endl;
 						continue; //passo al prossimo fd pronto
 					}
 					
 					fflush(stdout);//TODO: a cosa serve?
 					
 					switch(message_type){
-						case HANDSHAKE_1:
+						case HANDSHAKE:
 							// Ricevo i dati in ingresso (certificato)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
@@ -537,6 +544,9 @@ int main(int argc, char *argv[]){
 								quit_client(i, &master, true);
 								continue;
 							}
+							
+							// Salvo il valore di IV
+							client->set_iv(EVP_aes_128_cbc(), (char*)iv);
 							
 							delete[] plaintext_buffer;
 							plaintext_buffer = NULL;
@@ -694,9 +704,53 @@ int main(int argc, char *argv[]){
 							break;
 							
 						case COMMAND_LIST:
-							list = list_files(SERVER_FOLDER_PATH);
-							std::cout << list << std::endl;
-							
+							std::cout << "Ricevuto comando list" << std::endl;
+							/*
+							{
+								char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+								client->get_key_encr(key_encr_buffer);
+								char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+								client->get_iv(iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+								
+								uint32_t seqnum = client->get_my_nonce();
+								if(seqnum == UINT32_MAX){
+									std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+									quit_client(i, &master, true);
+									continue;
+								}
+								seqnum = htonl(seqnum);
+								
+								std::string list = list_files(SERVER_FOLDER_PATH);
+								const char* temp0 = list.c_str();
+								char temp1[list.size() + 1];
+								strncpy((char*)temp1, temp0, list.size());
+								temp1[list.size()] = '\0';
+								
+								char* ciphertext_buffer;
+								size_t ciphertext_buffer_len;
+								encrypt_symm((unsigned char*)temp1, (list.size() + 1), (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer);
+								
+								size_t temp_len = sizeof(seqnum) + ciphertext_buffer_len;
+								unsigned char temp[temp_len];
+								memcpy(temp, &seqnum, sizeof(seqnum));
+								memcpy(temp + sizeof(seqnum), ciphertext_buffer, ciphertext_buffer_len);
+								
+								unsigned char* digets_buffer;
+								size_t digets_buffer_len;
+								hash_bytes(temp, temp_len, &digets_buffer, &digets_buffer_len);
+								
+								size_t output_buffer_len = sizeof(seqnum) + ciphertext_buffer_len + digets_buffer_len;
+								unsigned char output_buffer[output_buffer_len];
+								memcpy(output_buffer, &seqnum, sizeof(seqnum));
+								memcpy(output_buffer + sizeof(seqnum), ciphertext_buffer, ciphertext_buffer_len);
+								memcpy(output_buffer + sizeof(seqnum) + ciphertext_buffer_len, digets_buffer, digets_buffer_len);
+								
+								delete[] ciphertext_buffer;
+								delete[] digets_buffer;
+								
+								send_data(client->get_fd(), (char*)output_buffer, output_buffer_len);
+							}
+							*/
 							break;
 						case COMMAND_DOWNLOAD:
 							//decrypt(i);
