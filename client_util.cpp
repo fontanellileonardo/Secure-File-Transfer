@@ -17,13 +17,6 @@ uint8_t identifyCommand(char* command){
 	return COMMAND_INVALID;
 }
 
-//funzione che stampa a video i comandi disponibili per l'utente
-void print_available_commands(){
-	//printf("%s",MESSAGE_USER_COMMAND);
-    std::cout<<MESSAGE_USER_COMMAND;
-	return;
-}
-
 //stampa sul terminale
 void print_prompt(){
 	std::cout << ">";
@@ -32,7 +25,7 @@ void print_prompt(){
 	return;
 }
 
-void send_command(uint8_t command, Session &session){
+int send_command(uint8_t command, Session &session){
 	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	session.get_key_encr((char*)key_encr_buffer);
 	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
@@ -40,7 +33,7 @@ void send_command(uint8_t command, Session &session){
 	
 	uint32_t seqnum = session.get_my_nonce();
 	if(seqnum == UINT32_MAX)
-		;//TODO: gestire l'errore
+		return 0;
 	seqnum = htonl(seqnum);
 	
 	unsigned char* ciphertext_buffer;
@@ -66,6 +59,7 @@ void send_command(uint8_t command, Session &session){
 	delete[] digets_buffer;
 	
 	send(session.get_fd(), output_buffer, output_buffer_len, 0);
+	return 1;
 }
 
 //chiede al server di sloggare l'utente mettendone lo stato in offline e termina.

@@ -15,7 +15,6 @@
 #include "messageDef.h"
 
 uint8_t identifyCommand(char* command);
-void print_available_commands();
 void print_prompt();
-void send_command(uint8_t command, Session &session);
+int send_command(uint8_t command, Session &session);
 void quitClient(int socket);

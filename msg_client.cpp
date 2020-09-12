@@ -526,7 +526,7 @@ int main(int argc, char* argv[]){
 	session.set_counterpart_nonce(ntohl(nonce_buffer));
 	
 	//  Debug
-	std::cout << "Numero sequenziale server: " << session.get_counterpart_nonce() << std::endl;
+	std::cout << "Numero sequenziale server: " << ntohl(nonce_buffer) << std::endl;
 	// /Debug
 	
 	//===== PASSO 3 =====
@@ -554,7 +554,7 @@ int main(int argc, char* argv[]){
 	// /Debug
 	
 	user_quit = 0;
-	print_available_commands();	
+	std::cout << MESSAGE_USER_COMMAND << std::endl;
 	while(user_quit == 0){
 		read_fds = master;
 		int fdmax = (fileno(stdin) > TCP_socket)? fileno(stdin) : TCP_socket;		
@@ -568,10 +568,12 @@ int main(int argc, char* argv[]){
   		   	command = identifyCommand(buffer);
 			switch(command){
 				case COMMAND_LIST:
-					std::cout << "Comando list" << std::endl;
 					{
-						send_command(COMMAND_LIST, session);
-						/*
+						if(send_command(COMMAND_LIST, session) != 1){
+							std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+						
 						// Ricevo i dati in ingresso (lista file)
 						if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
 							std::cerr << "Errore durante la ricezione della lista dei file" << std::endl;
@@ -582,14 +584,14 @@ int main(int argc, char* argv[]){
 						uint32_t client_nonce = session.get_counterpart_nonce();
 						if(client_nonce != ntohl(*((uint32_t*)input_buffer))){
 							std::cout << "Errore sequence number" << std::endl;
-							return -1;
+							terminate(-1);
 						}
 						
 						// Controllo l'hash
-						int ret = hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen + EVP_MD_size(EVP_sha256())));
-						if(ret < 1)
+						if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256()))) != 1){
 							std::cout << "Errore hash" << std::endl;
-							return ret;
+							terminate(-1);
+						}
 						
 						// Decripto il comando
 						unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
@@ -611,12 +613,10 @@ int main(int argc, char* argv[]){
 						input_buffer = NULL;
 						delete[] plaintext;
 						plaintext = NULL;
-						*/
 					}
 					break;
 				case COMMAND_HELP:
-					std::cout<<MESSAGE_USER_COMMAND_DETAILED<<std::endl;
-					//printf("%s", MESSAGE_USER_COMMAND_DETAILED);
+					std::cout << MESSAGE_USER_COMMAND << std::endl;
 					break;				
 				case COMMAND_UPLOAD:	
 					break;						
@@ -624,9 +624,7 @@ int main(int argc, char* argv[]){
 					//encrypt(TCP_socket);
 					break;
 				case COMMAND_QUIT:
-					quitClient(TCP_socket);
-					close(TCP_socket);
-					return 0;
+					terminate(0);
 				default:
 					std::cout << MESSAGE_INVALID_COMMAND << std::endl;
 					break;

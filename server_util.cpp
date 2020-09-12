@@ -30,7 +30,7 @@ std::string list_files(std::string path){
 		if(filename[0] == '.')
 			continue;
 		temp = std::string(filename);
-		ret += "\t"+temp;
+		ret += " * "+temp;
 	}
 	closedir(folder);
 	return ret;

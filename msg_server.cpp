@@ -705,7 +705,7 @@ int main(int argc, char *argv[]){
 							
 						case COMMAND_LIST:
 							std::cout << "Ricevuto comando list" << std::endl;
-							/*
+							
 							{
 								char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 								client->get_key_encr(key_encr_buffer);
@@ -750,7 +750,7 @@ int main(int argc, char *argv[]){
 								
 								send_data(client->get_fd(), (char*)output_buffer, output_buffer_len);
 							}
-							*/
+							
 							break;
 						case COMMAND_DOWNLOAD:
 							//decrypt(i);
