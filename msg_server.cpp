@@ -157,7 +157,7 @@ Session *get_client_by_fd(unsigned int fd){
 }
 
 //pone l'utente in stato offline e chiude la connessione tcp
-void quit_client(unsigned int socket, fd_set* master, bool notify_error){//TODO: comunicare al client che c'è stato un errore
+void quit_client(unsigned int socket, fd_set* master, bool notify_error){
 	if(notify_error){
 		send_error(socket);
 	}
@@ -384,12 +384,6 @@ int main(int argc, char *argv[]){
 					size_t encrypted_key_len = 0;
 					unsigned char* iv = NULL;
 					
-					/* TODO: togliere
-					// Vengono utilizzati per la cifratura simmetrica
-					char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-					char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-					*/
-					
 					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
 					Session *client = get_client_by_fd(i);
 					
@@ -411,7 +405,7 @@ int main(int argc, char *argv[]){
 							// Ricevo i dati in ingresso (certificato)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del certificato del client" << std::endl;
-								quit_client(i, &master, true);//TODO: potrebbe accadere perchè il client si è già disconnesso, quindi forse non serve segnalare l'errore
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -482,7 +476,7 @@ int main(int argc, char *argv[]){
 							// Ricevo i dati in ingresso (nonce)
 							if(receive_data(i, &input_buffer, &buflen) < 0){
 								std::cerr << "Errore durante la ricezione del numero sequenziale del client" << std::endl;
-								quit_client(i, &master, true);//TODO: potrebbe accadere perchè il client si è già disconnesso, quindi forse non serve segnalare l'errore
+								quit_client(i, &master, false);
 								continue;
 							}
 							
@@ -737,20 +731,14 @@ int main(int argc, char *argv[]){
 							quit_client(i, &master, false);
 							break;
 						default:
-							std::cout<<"errore nella comunicazione con il client"<<std::endl;
+							std::cout << "Errore nella comunicazione con il client" << std::endl;
 							continue;		
-					}// switch
-				}// else
-			}// if
-		}// for
-	}// while
-	
-	
+					}
+				}
+			}
+		}
+	}
 	
 	terminate(0);
 	return 0;
 }
-
-//TODO: Si usa a volte return, a volte exit. Sistemare
-//TODO: controllare dopo ogni new che i puntatori non siano null
-

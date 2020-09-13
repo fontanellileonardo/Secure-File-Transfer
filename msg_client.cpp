@@ -605,10 +605,8 @@ int main(int argc, char* argv[]){
 		}
 		
 		if(FD_ISSET(TCP_socket, &read_fds)){// Input dalla rete
-		//TODO: controllare che byte arrivano per capire se è una disconnessione causata dalla quit_client() sul server
-		//il server si e' disconnesso
-			std::cout<<"Input dalla rete"<<std::endl;
-			return 0;
+			std::cout<<"Disconnesso dal sever"<<std::endl;
+			terminate(0);
 		}
 	}
 	return 0;

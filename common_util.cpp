@@ -1,6 +1,6 @@
 #include "common_util.h"
 
-Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
+Session::Session(unsigned int fd){
 	this->fd = fd;
 	key_auth = NULL;
 	key_encr = NULL;
@@ -589,10 +589,6 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	uint32_t seqnum = session->get_my_nonce();
 	if(seqnum == (UINT32_MAX - 1)){// Me ne servono 2, uno per la dimensione e uno per il messaggio da inviare, dunque: UINT32_MAX - 1
 		return 0;
-		//std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
-		//quit_client(i, &master, true);
-		//continue;
-		//TODO: gestire
 	}
 	uint32_t seqnum_msg = htonl(seqnum + 1);
 	
