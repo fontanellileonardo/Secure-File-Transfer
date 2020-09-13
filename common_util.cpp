@@ -27,6 +27,10 @@ bool CustomBN::initialize(char* buffer, size_t size){
 		return false;
 	memcpy(&counter_1, buffer, sizeof(counter_1));
 	memcpy(&counter_0,  buffer + sizeof(counter_1), sizeof(counter_0));
+	
+	if(counter_1 > (UINT64_MAX / 2))
+		counter_1 = counter_1 - (UINT64_MAX / 2);
+	
 	return true;
 }
 
@@ -43,6 +47,9 @@ bool CustomBN::get_next(char* buffer, size_t size){
 	}
 	else
 		counter_0++;
+	
+	if(counter_1 == UINT64_MAX && counter_0 == UINT64_MAX)
+		return false;
 	
 	memcpy(buffer, &counter_1, sizeof(counter_1));
 	memcpy(buffer + sizeof(counter_1), &counter_0, sizeof(counter_0));
@@ -514,7 +521,8 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	session->get_key_encr((char*)key_encr_buffer);
 	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-	session->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	if(!session->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc())))
+		return -1;
 	
 	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), (unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
 		std::cerr << "Errore decrypt" << std::endl;
@@ -574,7 +582,8 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	session->get_key_encr(key_encr_buffer);
 	char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-	session->get_iv(iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	if(!session->get_iv(iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc())))
+		return 0;
 	
 	// Recupero il numero sequenziale e ne controllo la validità
 	uint32_t seqnum = session->get_my_nonce();

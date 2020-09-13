@@ -29,7 +29,8 @@ int send_command(uint8_t command, Session &session){
 	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	session.get_key_encr((char*)key_encr_buffer);
 	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-	session.get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	if(!session.get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc())))
+		return 0;
 	
 	uint32_t seqnum = session.get_my_nonce();
 	if(seqnum == UINT32_MAX)

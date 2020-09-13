@@ -72,7 +72,8 @@ int recv_command(uint8_t &message_type, Session* client){
 	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	client->get_key_encr((char*)key_encr_buffer);
 	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-	client->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	if(!client->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc())))
+		return -1;
 	
 	unsigned char* plaintext;
 	size_t plaintextlen;
