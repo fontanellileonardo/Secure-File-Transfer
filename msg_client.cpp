@@ -20,6 +20,8 @@ X509* client_certificate = NULL;
 X509* server_certificate = NULL;
 EVP_PKEY* server_pubkey = NULL;
 
+int TCP_socket;
+
 void terminate(int value){
 	if(TCP_socket)
 		close(TCP_socket);
@@ -465,8 +467,24 @@ int main(int argc, char* argv[]){
 					break;				
 				case COMMAND_UPLOAD:	
 					break;						
-				case COMMAND_DOWNLOAD:
-					encrypt(TCP_socket);
+				case COMMAND_DOWNLOAD:{
+					std::cout << "Comando di download ricevuto" << std::endl;
+					// Invio il comando di upload
+					if (send_command(COMMAND_DOWNLOAD, session) != 1){
+						std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+						terminate(-1);
+					}
+					// TODO: cambia con vera chiave
+					unsigned char *key = (unsigned char*) "0123456789012345";
+					size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
+					unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
+					// TODO: Passa il vero iv
+					unsigned char* iv;
+					std::string fileName = "ice.jpg";
+					//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
+					encryptAndSendFile(key, iv, ciphertext, TCP_socket, fileName);
+					delete[] ciphertext;
+				}
 					break;
 				case COMMAND_QUIT:
 					terminate(0);

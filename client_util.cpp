@@ -4,7 +4,7 @@
 uint8_t identifyCommand(char* command){
 
 	if(strlen(command) != 6 && strncmp(command, "!list", 5)== 0){
-		return COMMAND_FILELIST;
+		return COMMAND_LIST;
 	}
 	if(strlen(command) != 6 && strncmp(command, "!help", 5)== 0){
 		return COMMAND_HELP;

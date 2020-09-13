@@ -1,6 +1,7 @@
 #include "common_util.h"
 
 std::fstream fs;
+
 static size_t NUM_BLOCKS = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
 Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
@@ -756,7 +757,7 @@ long long int fsize() {
 	return fsize;
 }
 
-int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket){	
+int encryptAndSendFile(unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket, std::string fileName){	
 	int i;
 	EVP_CIPHER_CTX * ctx;
 	int len = 0;
@@ -767,24 +768,20 @@ int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, u
 	
 	//Encrypt init
 	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), key, NULL);
-	
-	int message_type;
-	uint32_t umessage_type;
-	
-	//comando per specificare operazione
-	message_type = COMMAND_DOWNLOAD;
-	umessage_type = htonl(message_type);
-	int ret = send(TCP_socket, &umessage_type, sizeof(uint32_t), 0);
-	std::cout << "Valore di ret: "<< ret << std::endl;
-	if (ret <= 0) {
-		std::cout << "Errore nell'invio del comando"<< std::endl;
-		exit(1);
-	}
-	std::cout<<"Comando inviato: "<< message_type << std::endl;
+
+	//Calcola la grandezza del file
+	std::string path = CLIENT_FILES_PATH;
+	//TODO: controlla caratteri passati dall'utente
+	path.append(fileName);
+	std::cout<<"File path:"<<path<<std::endl;
+	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
+	if(!fs) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
+	long long int file_len = fsize();
+	std::cout<<"dim file in encrypt: " << file_len << std::endl;
 
 	//invio lunghezza file	
 	long long int ufile_len = htonl(file_len);
-	ret = send(TCP_socket, &ufile_len, sizeof(uint64_t), 0);
+	int ret = send(TCP_socket, &ufile_len, sizeof(uint64_t), 0);
 	std::cout << "Valore di ret: "<< ret << std::endl;
 	if (ret <= 0) {
 		std::cout << "Errore nell'invio della grandezza del file"<< std::endl;
@@ -802,12 +799,12 @@ int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, u
 		fs.read(buffer,FRAGM_SIZE);	
 		EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char*)buffer, FRAGM_SIZE);
 		if(len == 0) {
-			printf("Errore nella EncryptUpdate\n");
+			std::cerr << "Errore nella EncryptUpdate" << std::endl;
 			exit(1);
 		}
 		ciphertext_len += len;
 		ulen_cipher = htonl(len);
-		std::cout << "grandezza chuck: " << len << std::endl;
+		std::cout << "grandezza chunck: " << len << std::endl;
 		int ret = send(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
 		std::cout << "Valore di ret nell'invio della grandezza del chunck: "<< ret << std::endl;
 		if (ret != sizeof(uint32_t)) {
@@ -820,7 +817,7 @@ int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, u
 		if (ret != len) {
 			std::cout << "Errore nell'invio del chunck"<< std::endl;
 			exit(1);
-		}		
+		}	
 		std::cout<<"ciphertext is: "<<std::endl;	
 		std::cout<<std::endl<<std::endl;				
 	}
@@ -861,23 +858,6 @@ int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, u
 	delete[] buffer;
 
 	return ciphertext_len;
-}
-
-void encrypt(int TCP_socket){
-	unsigned char *key = (unsigned char*) "0123456789012345";
-	// in realtà dovrebbe essere grande quanto il maggior multiplo di 16 che FRAGM_SIZE riesce ad avere
-	size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
-	unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
-	std::string path = CLIENT_FILES_PATH;
-	path.append("/ice.jpg");
-	std::cout<<"File path:"<<path<<std::endl;
-	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
-	if(!fs) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
-	long long int ssst = fsize();
-	std::cout<<"dim file in encrypt: " << ssst << std::endl;
-	unsigned char* iv;
-	encryptAndSendFile(ssst, key, iv, ciphertext, TCP_socket);
-	delete[] ciphertext;
 }
 
 int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){

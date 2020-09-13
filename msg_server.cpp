@@ -276,7 +276,7 @@ int main(int argc, char *argv[]){
 					}
 					
 					fflush(stdout);//TODO: a cosa serve?
-					
+					std::cout << "Ho ricevuto il comando: " << message_type << std::endl;
 					switch(message_type){
 						case HANDSHAKE:
 							// Ricevo i dati in ingresso (certificato)
@@ -599,6 +599,7 @@ int main(int argc, char *argv[]){
 							
 							break;
 						case COMMAND_DOWNLOAD:
+							std::cout<<"Comando di download ricevuto"<<std::endl;
 							decrypt(i);
 							break;
 						case COMMAND_UPLOAD:		
