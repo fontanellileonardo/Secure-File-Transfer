@@ -20,6 +20,8 @@ X509* client_certificate = NULL;
 X509* server_certificate = NULL;
 EVP_PKEY* server_pubkey = NULL;
 
+int TCP_socket;
+
 void terminate(int value){
 	if(TCP_socket)
 		close(TCP_socket);
