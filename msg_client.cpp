@@ -569,50 +569,23 @@ int main(int argc, char* argv[]){
 			switch(command){
 				case COMMAND_LIST:
 					{
+						// Invio il comando
 						if(send_command(COMMAND_LIST, session) != 1){
 							std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
 							terminate(-1);
 						}
 						
 						// Ricevo i dati in ingresso (lista file)
-						if(receive_data(TCP_socket, &input_buffer, &buflen) < 0){
-							std::cerr << "Errore durante la ricezione della lista dei file" << std::endl;
-							terminate(-1);
-						}
+						int ret = receive_data_encr(&input_buffer, &buflen, &session);
+						if(ret < 0)
+							;//TODO: gestire l'errore
 						
-						// Controllo se il numero sequenziale è corretto
-						uint32_t client_nonce = session.get_counterpart_nonce();
-						if(client_nonce != ntohl(*((uint32_t*)input_buffer))){
-							std::cout << "Errore sequence number" << std::endl;
-							terminate(-1);
-						}
+						// Stampo la lista
+						std::cout << input_buffer << std::endl;
 						
-						// Controllo l'hash
-						if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256()))) != 1){
-							std::cout << "Errore hash" << std::endl;
-							terminate(-1);
-						}
-						
-						// Decripto il comando
-						unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-						session.get_key_encr((char*)key_encr_buffer);
-						unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-						session.get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
-						
-						unsigned char* plaintext;
-						size_t plaintextlen;
-						if(decrypt_symm((unsigned char*)(input_buffer + 4), (buflen - (4 + EVP_MD_size(EVP_sha256()))), &plaintext, &plaintextlen, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
-							std::cout << "Errore decrypt" << std::endl;
-							return -1;
-						}
-						
-						std::cout << plaintext << std::endl;
-						
-						// Dealloco il buffer allocato nella funzione receive_data(...)
+						// Dealloco il buffer allocato nella funzione receive_data_encr(...)
 						delete[] input_buffer;
 						input_buffer = NULL;
-						delete[] plaintext;
-						plaintext = NULL;
 					}
 					break;
 				case COMMAND_HELP:

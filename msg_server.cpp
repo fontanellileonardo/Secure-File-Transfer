@@ -705,50 +705,18 @@ int main(int argc, char *argv[]){
 							
 						case COMMAND_LIST:
 							std::cout << "Ricevuto comando list" << std::endl;
-							
 							{
-								char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-								client->get_key_encr(key_encr_buffer);
-								char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-								client->get_iv(iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
-								
-								uint32_t seqnum = client->get_my_nonce();
-								if(seqnum == UINT32_MAX){
-									std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
-									quit_client(i, &master, true);
-									continue;
-								}
-								seqnum = htonl(seqnum);
-								
+								// Costruisco la lista
 								std::string list = list_files(SERVER_FOLDER_PATH);
+								
+								// Aggiungo il carattere di terminazione alla stringa
 								const char* temp0 = list.c_str();
 								char temp1[list.size() + 1];
 								strncpy((char*)temp1, temp0, list.size());
 								temp1[list.size()] = '\0';
 								
-								char* ciphertext_buffer;
-								size_t ciphertext_buffer_len;
-								encrypt_symm((unsigned char*)temp1, (list.size() + 1), (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer);
-								
-								size_t temp_len = sizeof(seqnum) + ciphertext_buffer_len;
-								unsigned char temp[temp_len];
-								memcpy(temp, &seqnum, sizeof(seqnum));
-								memcpy(temp + sizeof(seqnum), ciphertext_buffer, ciphertext_buffer_len);
-								
-								unsigned char* digets_buffer;
-								size_t digets_buffer_len;
-								hash_bytes(temp, temp_len, &digets_buffer, &digets_buffer_len);
-								
-								size_t output_buffer_len = sizeof(seqnum) + ciphertext_buffer_len + digets_buffer_len;
-								unsigned char output_buffer[output_buffer_len];
-								memcpy(output_buffer, &seqnum, sizeof(seqnum));
-								memcpy(output_buffer + sizeof(seqnum), ciphertext_buffer, ciphertext_buffer_len);
-								memcpy(output_buffer + sizeof(seqnum) + ciphertext_buffer_len, digets_buffer, digets_buffer_len);
-								
-								delete[] ciphertext_buffer;
-								delete[] digets_buffer;
-								
-								send_data(client->get_fd(), (char*)output_buffer, output_buffer_len);
+								// Invio la lista
+								send_data_encr(temp1, (list.size() + 1), client);
 							}
 							
 							break;
