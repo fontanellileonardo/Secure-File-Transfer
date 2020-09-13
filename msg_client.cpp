@@ -474,8 +474,8 @@ int main(int argc, char* argv[]){
 	encrypted_key = NULL;
 	
 	// Salvo le chiavi simmetriche ricevute e IV
-	session.set_key_auth(EVP_aes_128_cbc(), (char*)plaintext_buffer);
-	session.set_key_encr(EVP_aes_128_cbc(), (char*)plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+	session.set_key_auth(EVP_sha256(), (char*)plaintext_buffer);
+	session.set_key_encr(EVP_aes_128_cbc(), (char*)plaintext_buffer + EVP_MD_size(EVP_sha256()));
 	session.set_iv(EVP_aes_128_cbc(), (char*)iv);
 	
 	delete[] plaintext_buffer;

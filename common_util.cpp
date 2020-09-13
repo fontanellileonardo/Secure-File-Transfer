@@ -85,13 +85,13 @@ uint32_t Session::get_my_nonce(){
 	return ++my_nonce;
 }
 
-int Session::initialize(const EVP_CIPHER *type){
-	key_encr = new char[EVP_CIPHER_key_length(type)];
-	if(get_random(key_encr, EVP_CIPHER_key_length(type)) < 0)
+int Session::initialize(const EVP_CIPHER *type_encr, const EVP_MD *type_auth){
+	key_encr = new char[EVP_CIPHER_key_length(type_encr)];
+	if(get_random(key_encr, EVP_CIPHER_key_length(type_encr)) < 0)
 		return -1;
 	
-	key_auth = new char[EVP_CIPHER_key_length(type)];
-	if(get_random(key_auth, EVP_CIPHER_key_length(type)) < 0)
+	key_auth = new char[EVP_MD_size(type_auth)];
+	if(get_random(key_auth, EVP_MD_size(type_auth)) < 0)
 		return -1;
 	
 	return 0;
@@ -114,15 +114,15 @@ int Session::set_iv(const EVP_CIPHER *type, char* iv_buffer){
 	return 0;
 }
 
-int Session::set_key_auth(const EVP_CIPHER *type, char* key){
+int Session::set_key_auth(const EVP_MD *type, char* key){
 	if(key == NULL)
 		return -1;
 	
 	if(key_auth != NULL)
 		delete[] key_auth;
 	
-	key_auth = new char[EVP_CIPHER_key_length(type)];
-	memcpy(key_auth, key, EVP_CIPHER_key_length(type));
+	key_auth = new char[EVP_MD_size(type)];
+	memcpy(key_auth, key, EVP_MD_size(type));
 	return 0;
 }
 
@@ -342,7 +342,7 @@ int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_
 	unsigned int digestlen;
 	*digest = new unsigned char[EVP_MD_size(EVP_sha256())];
 	
-	size_t key_auth_len = EVP_CIPHER_key_length(EVP_aes_128_cbc());//TODO: cambiare la dimensione della chiave
+	size_t key_auth_len = EVP_CIPHER_key_length(EVP_aes_128_cbc());
 	char key_auth_buffer[key_auth_len];
 	session->get_key_encr(key_auth_buffer);
 	

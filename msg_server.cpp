@@ -526,20 +526,20 @@ int main(int argc, char *argv[]){
 							OPENSSL_free(output_buffer);
 							output_buffer = NULL;
 							
-							// Genero iv e le chiavi di cifratura e autenticazione
-							if(client->initialize(EVP_aes_128_cbc()) < 0){
+							// Genero le chiavi di cifratura e autenticazione
+							if(client->initialize(EVP_aes_128_cbc(), EVP_sha256()) < 0){
 								std::cerr << "Errore durante la generazione delle chiavi simmetriche" << std::endl;
 								quit_client(i, &master, true);
 								continue;
 							}
 							
 							// Cifro le chiavi appena generate con la chiave pubblica del client
-							plaintext_buffer = new char[EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2];
+							plaintext_buffer = new char[EVP_MD_size(EVP_sha256()) + EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 							client->get_key_auth(plaintext_buffer);
-							client->get_key_encr(plaintext_buffer + EVP_CIPHER_key_length(EVP_aes_128_cbc()));
+							client->get_key_encr(plaintext_buffer + EVP_MD_size(EVP_sha256()));
 							
 							// Cifro le chiavi simmetriche
-							if(encrypt_asym(plaintext_buffer, (EVP_CIPHER_key_length(EVP_aes_128_cbc()) * 2), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen, &encrypted_key, &encrypted_key_len, &iv) < 0){
+							if(encrypt_asym(plaintext_buffer, (EVP_MD_size(EVP_sha256()) + EVP_CIPHER_key_length(EVP_aes_128_cbc())), client->get_counterpart_pubkey(), EVP_aes_128_cbc(), (unsigned char**)&ciphertext_buffer, &ciphertextlen, &encrypted_key, &encrypted_key_len, &iv) < 0){
 								std::cerr << "Errore durante la cifratura delle chiavi simmetriche" << std::endl;
 								quit_client(i, &master, true);
 								continue;

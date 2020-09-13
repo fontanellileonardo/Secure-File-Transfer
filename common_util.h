@@ -51,7 +51,7 @@ class Session{
 		// Restituisce la chiave simmetrica di cifratura
 		int get_key_encr(char *buffer);
 		// Inizializza iv, key_encr e key_auth con byte pseudocasuali
-		int initialize(const EVP_CIPHER *type);
+		int initialize(const EVP_CIPHER *type_encr, const EVP_MD *type_auth);
 		// Salva il numero di sequenza della controparte
 		void set_counterpart_nonce(uint32_t nonce);
 		// Salva la chiave pubblica del server
@@ -59,7 +59,7 @@ class Session{
 		// Salva il valore IV
 		int set_iv(const EVP_CIPHER *type, char* iv_buffer);
 		// Salva la chiave simmetrica di autenticazione
-		int set_key_auth(const EVP_CIPHER *type, char* key);
+		int set_key_auth(const EVP_MD *type, char* key);
 		// Salva la chiave simmetrica di cifratura
 		int set_key_encr(const EVP_CIPHER *type, char* key);
 };
