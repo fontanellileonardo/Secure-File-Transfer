@@ -4,7 +4,7 @@ std::fstream fs;
 static size_t NUM_BLOCKS = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 
 Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_aes_128_cbc()) al costruttore
-	this->fd = fd;//TODO: da usare al posto di TCP_socket
+	this->fd = fd;
 	key_auth = NULL;
 	key_encr = NULL;
 	//char buffer[sizeof(my_nonce)];
@@ -17,8 +17,6 @@ Session::Session(unsigned int fd){//TODO: passare il tipo di algoritmo (es: EVP_
 }
 
 Session::~Session(){
-	if(iv != NULL)
-		delete[] iv;
 	if(key_encr != NULL)
 		delete[] key_encr;
 	if(key_auth != NULL)
@@ -27,8 +25,35 @@ Session::~Session(){
 		EVP_PKEY_free(counterpart_pubkey);
 }
 
+bool CustomBN::initialize(char* buffer, size_t size){
+	if(size != 16)
+		return false;
+	memcpy(&counter_1, buffer, sizeof(counter_1));
+	memcpy(&counter_0,  buffer + sizeof(counter_1), sizeof(counter_0));
+	return true;
+}
+
+bool CustomBN::get_next(char* buffer, size_t size){
+	if(size < 16)
+		return false;
+	
+	if(counter_0 == UINT64_MAX){
+		if(counter_1 == UINT64_MAX)
+			counter_1 = 0;
+		else
+			counter_1++;
+		counter_0 = 0;
+	}
+	else
+		counter_0++;
+	
+	memcpy(buffer, &counter_1, sizeof(counter_1));
+	memcpy(buffer + sizeof(counter_1), &counter_0, sizeof(counter_0));
+	return true;
+}
+
 uint32_t Session::get_counterpart_nonce(){
-	return counterpart_nonce++;
+	return ++counterpart_nonce;
 }
 
 EVP_PKEY* Session::get_counterpart_pubkey(){
@@ -39,12 +64,8 @@ unsigned int Session::get_fd(){
 	return fd;
 }
 
-int Session::get_iv(char* buffer){
-	if(iv == NULL)
-		return -1;
-
-	memcpy(buffer, iv, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
-	return 0;
+bool Session::get_iv(char* buffer, size_t size){
+	return iv.get_next(buffer, size);
 }
 
 int Session::get_key_auth(char* buffer){
@@ -64,16 +85,10 @@ int Session::get_key_encr(char* buffer){
 }
 
 uint32_t Session::get_my_nonce(){
-	return my_nonce++;
+	return ++my_nonce;
 }
 
 int Session::initialize(const EVP_CIPHER *type){
-	/*
-	iv = new char[EVP_CIPHER_iv_length(type)];
-	if(get_random(iv, EVP_CIPHER_iv_length(type)) < 0)
-		return -1;
-	*/
-	
 	key_encr = new char[EVP_CIPHER_key_length(type)];
 	if(get_random(key_encr, EVP_CIPHER_key_length(type)) < 0)
 		return -1;
@@ -91,6 +106,15 @@ void Session::set_counterpart_nonce(uint32_t nonce){
 
 void Session::set_counterpart_pubkey(EVP_PKEY *pubkey){
 	counterpart_pubkey = pubkey;
+}
+
+int Session::set_iv(const EVP_CIPHER *type, char* iv_buffer){
+	if(iv_buffer == NULL)
+		return -1;
+	
+	if(!iv.initialize(iv_buffer, EVP_CIPHER_iv_length(type)))
+		return -1;
+	return 0;
 }
 
 int Session::set_key_auth(const EVP_CIPHER *type, char* key){
@@ -167,6 +191,37 @@ int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char*
 	return 0;
 }
 
+int decrypt_symm(unsigned char* ciphertext, size_t cipherlen, unsigned char** plaintext, size_t* plaintextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv){
+	int plainlen;
+	int outlen;
+	
+	*plaintext = new unsigned char[cipherlen + 16];
+	
+	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_DecryptInit(ctx, type, key, iv) !=1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	
+	if(EVP_DecryptUpdate(ctx, *plaintext, &outlen, ciphertext, cipherlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	plainlen = outlen;
+	
+	if(EVP_DecryptFinal(ctx, *plaintext + plainlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	plainlen += outlen;
+	
+	*plaintextlen = (size_t)plainlen;
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
+}
+
 int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const EVP_CIPHER *type, unsigned char** ciphertext, size_t* ciphertextlen, unsigned char** encrypted_key, size_t *encrypted_key_len, unsigned char** iv){
 	*encrypted_key_len = EVP_PKEY_size(pubkey);
 	*encrypted_key = new unsigned char[EVP_PKEY_size(pubkey)];
@@ -200,6 +255,81 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	return 0;
 }
 
+int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned char** ciphertext, size_t* ciphertextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv){
+	*ciphertext = new unsigned char[plaintextlen + 1 + EVP_CIPHER_block_size(type)];
+	int cipherlen;
+	int outlen;
+	
+	EVP_CIPHER_CTX* ctx;
+	ctx = EVP_CIPHER_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	if(EVP_EncryptInit(ctx, type, key, iv) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	if(EVP_EncryptUpdate(ctx, *ciphertext, &outlen, plaintext, plaintextlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	cipherlen = outlen;
+	if(EVP_EncryptFinal(ctx, *ciphertext + cipherlen, &outlen) != 1){
+		EVP_CIPHER_CTX_free(ctx);
+		return -1;
+	}
+	*ciphertextlen = (size_t)(cipherlen + outlen);
+	
+	EVP_CIPHER_CTX_free(ctx);
+	return 0;
+}
+
+size_t get_file_size(std::string filename){
+	size_t file_size = 0;
+	std::ifstream file(filename, std::ios::binary);
+	if(file){
+		file.seekg(0, std::ios::end);
+		file_size = file.tellg();
+		file.close();
+	}
+	return file_size;
+}
+
+std::string get_file_size_string(std::string filename){
+	size_t size = get_file_size(filename);
+	size_t divider = 1;
+	std::string unit;
+	
+	if(size > (1024 * 1024 * 1024)){
+		divider = (1024 * 1024 * 1024);
+		unit = " Gb";
+	}
+	else if(size > (1024 * 1024)){
+		divider = (1024 * 1024);
+		unit = " Mb";
+	}
+	else if(size > 1024){
+		divider = 1024;
+		unit = " Kb";
+	}
+	else{
+		return std::to_string(size) + " Byte";
+	}
+	
+	std::string integer_part = std::to_string(size / divider);
+	
+	if((size % divider) > 9){
+		std::string decimal_part = std::to_string(size % divider);
+		return integer_part + "." + decimal_part.substr(0, 2) + unit;
+	}
+	else if((size % divider) > 0){
+		std::string decimal_part = std::to_string(size % divider);
+		return integer_part + "." + decimal_part.substr(0, 1) + unit;
+	}
+	else{
+		return integer_part + unit;
+	}
+}
+
 // Scrive buflen byte pseudocasuali in buffer
 int get_random(char* buffer, size_t buflen){
 	if(RAND_poll() != 1){
@@ -209,6 +339,61 @@ int get_random(char* buffer, size_t buflen){
 		return -1;
 	}
 	return 0;
+}
+
+int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len, Session* session){
+	unsigned int digestlen;
+	*digest = new unsigned char[EVP_MD_size(EVP_sha256())];
+	
+	size_t key_auth_len = EVP_CIPHER_key_length(EVP_aes_128_cbc());//TODO: cambiare la dimensione della chiave
+	char key_auth_buffer[key_auth_len];
+	session->get_key_encr(key_auth_buffer);
+	
+	//EVP_MD_CTX* ctx;
+	//ctx = EVP_MD_CTX_new();
+	HMAC_CTX* ctx = HMAC_CTX_new();
+	if(ctx == NULL)
+		return -1;
+	//if(EVP_DigestInit(ctx, EVP_sha256()) != 1){
+	if(HMAC_Init_ex(ctx, key_auth_buffer, key_auth_len, EVP_sha256(), NULL) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
+		return -1;
+	}
+	//if(EVP_DigestUpdate(ctx, msg, msg_len) != 1){
+	if(HMAC_Update(ctx, msg, msg_len) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
+		return -1;
+	}
+	//if(EVP_DigestFinal(ctx, *digest, &digestlen) != 1){
+	if(HMAC_Final(ctx, *digest, &digestlen) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
+		return -1;
+	}
+	*digest_len = (size_t)digestlen;
+	
+	//EVP_MD_CTX_free(ctx);
+	HMAC_CTX_free(ctx);
+	return 0;
+}
+
+int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest, Session* session){
+	unsigned char* digest;
+	size_t digest_len;
+	
+	if(hash_bytes(msg, msg_len, &digest, &digest_len, session) < 0)
+		return -1;
+	
+	if(CRYPTO_memcmp(digest, received_digest, digest_len) == 0){
+		delete[] digest;
+		return 1;
+	}
+	else{
+		delete[] digest;
+		return 0;
+	}
 }
 
 //Carica il certificato come file .pem
@@ -255,7 +440,8 @@ int load_private_key(std::string filename, std::string password, EVP_PKEY** prvk
 // Alloca un nuovo buffer e vi inserisce i dati ricevuti.
 // Deallocare sempre il buffer non appena i dati in esso contenuti non servono più
 int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
-	size_t buflen_n, received = 0;
+	uint32_t buflen_n;
+	size_t received = 0;
 	ssize_t ret = 0;
 	
 	// Ricevo dimensione dei dati in ingresso
@@ -263,8 +449,11 @@ int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
 		return -1;
 	}
 	*buflen = ntohl(buflen_n);
-	if(*buflen <= 0)
+	if(*buflen < 0)
 		return -1;
+	
+	if(*buflen == 0)
+		return 0;
 	
 	// Alloco il buffer per i dati in ingresso
 	*input_buffer = new char[*buflen];
@@ -285,11 +474,91 @@ int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
 	return 0;
 }
 
+int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session){
+	size_t buflen;
+	ssize_t ret = receive_size_hmac(session, &buflen);
+	if(ret < 0)
+		return ret;
+	
+	// Alloco il buffer per i dati in ingresso
+	char input_buffer[buflen];
+	
+	// Ricevo i dati in ingresso
+	size_t received = 0;
+	ret = 0;
+	while(received < buflen){
+		ret = recv(session->get_fd(), input_buffer + received, (buflen) - received, 0);
+		if(ret < 0){
+			return -1;
+		}
+		if(ret == 0){
+			return -1;
+		}
+		received += ret;
+	}
+	
+	if(received != buflen)
+		return 0;
+	
+	// Controllo se il numero sequenziale è corretto
+	uint32_t seqnum = session->get_counterpart_nonce();
+	if(seqnum != ntohl(*((uint32_t*)input_buffer))){
+		std::cerr << "Errore sequence number" << std::endl;
+		return -1;
+	}
+	
+	// Controllo l'hash
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
+		std::cerr << "Errore hash" << std::endl;
+		return -1;
+	}
+	
+	// Decripto il comando
+	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+	session->get_key_encr((char*)key_encr_buffer);
+	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+	session->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	
+	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), (unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
+		std::cerr << "Errore decrypt" << std::endl;
+		return -1;
+	}
+	
+	return 1;
+}
+
+int receive_size_hmac(Session* session, size_t* size){
+	size_t buflen = sizeof(uint32_t) + sizeof(uint32_t) + EVP_MD_size(EVP_sha256());// 4 + 4 + 32
+	char input_buffer[buflen];
+	
+	// Ricevo i byte
+	if(recv(session->get_fd(), input_buffer, buflen, MSG_WAITALL) < 0)
+		return 0;
+	
+	// Controllo se il numero sequenziale è corretto
+	uint32_t seqnum = session->get_counterpart_nonce();
+	if(seqnum != ntohl(*((uint32_t*)input_buffer))){
+		std::cerr << "Errore sequence number" << std::endl;
+		return -1;
+	}
+	
+	// Controllo l'hash
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
+		std::cerr << "Errore hash" << std::endl;
+		return -1;
+	}
+	
+	// Copio il valore nella variabile size
+	*size = (size_t)htonl(*((uint32_t*)(input_buffer + sizeof(uint32_t))));
+	
+	return 1;
+}
+
 int send_data(unsigned int fd, const char* buffer, size_t buflen){
 	size_t sent = 0;
 	ssize_t ret;
 	
-	size_t buflen_n = htonl(buflen);
+	uint32_t buflen_n = htonl(buflen);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 	
 	while(sent < buflen){
@@ -301,6 +570,117 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 		sent += ret;
 	}
 	return (sent == buflen)?0:(-1);
+}
+
+int send_data_encr(const char* buffer, size_t buflen, Session* session){
+	// Recupero le chiavi simmetriche dalla struttura dati
+	char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+	session->get_key_encr(key_encr_buffer);
+	char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+	session->get_iv(iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+	
+	// Recupero il numero sequenziale e ne controllo la validità
+	uint32_t seqnum = session->get_my_nonce();
+	if(seqnum == (UINT32_MAX - 1)){// Me ne servono 2, uno per la dimensione e uno per il messaggio da inviare, dunque: UINT32_MAX - 1
+		return 0;
+		//std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+		//quit_client(i, &master, true);
+		//continue;
+		//TODO: gestire
+	}
+	uint32_t seqnum_msg = htonl(seqnum + 1);
+	
+	// Cifro il messggio (contenuto in buffer)
+	char* ciphertext_buffer;
+	size_t ciphertext_buffer_len;
+	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
+		return 0;
+	
+	// Copio il numero sequenziale e messaggio nel buffer su cui verrà calcolato l'hash
+	size_t to_be_hashed_len = sizeof(seqnum_msg) + ciphertext_buffer_len;
+	unsigned char to_be_hashed[to_be_hashed_len];
+	memcpy(to_be_hashed, &seqnum_msg, sizeof(seqnum_msg));
+	memcpy(to_be_hashed + sizeof(seqnum_msg), ciphertext_buffer, ciphertext_buffer_len);
+	
+	// Calcolo l'hash di (numero sequenziale, messaggio)
+	unsigned char* digets_buffer;
+	size_t digets_buffer_len;
+	if(hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len, session) < 0)
+		return 0;
+	
+	// Copio il numero sequenziale, messaggio e hash nel buffer che verrà inviato
+	size_t output_buffer_len = sizeof(seqnum_msg) + ciphertext_buffer_len + digets_buffer_len;
+	unsigned char output_buffer[output_buffer_len];
+	memcpy(output_buffer, &seqnum_msg, sizeof(seqnum_msg));
+	memcpy(output_buffer + sizeof(seqnum_msg), ciphertext_buffer, ciphertext_buffer_len);
+	memcpy(output_buffer + sizeof(seqnum_msg) + ciphertext_buffer_len, digets_buffer, digets_buffer_len);
+	
+	delete[] ciphertext_buffer;
+	delete[] digets_buffer;
+	ssize_t ret;
+	
+	// Invio la dimensione (protetta da hash) del messaggio che sto per inviare
+	ret = send_size_hmac(htonl(seqnum), htonl(output_buffer_len), session);
+	if(ret < 1)
+		return ret;
+	
+	// Incremento il contatore interno perchè ho incrementato "seqnum_msg" di uno
+	session->get_my_nonce();
+	
+	// Invio i dati
+	size_t sent = 0;
+	
+	while(sent < output_buffer_len){
+		ret = send(session->get_fd(), output_buffer + sent, output_buffer_len - sent, 0);
+		//std::cout << "Inviati: " << ret << " byte" << std::endl;
+		if(ret < 0){
+			return -1;
+		} 
+		sent += ret;
+	}
+	return (sent == output_buffer_len)?1:(-1);
+}
+
+void send_error(unsigned int fd){
+	uint32_t buflen_n = htonl(0);
+	send(fd, &buflen_n, sizeof(buflen_n), 0);
+}
+
+int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
+	// Copio il numero sequenziale e size nel buffer su cui verrà calcolato l'hash
+	size_t to_be_hashed_len = sizeof(seqnum) + sizeof(size);
+	unsigned char to_be_hashed[to_be_hashed_len];
+	memcpy(to_be_hashed, &seqnum, sizeof(seqnum));
+	memcpy(to_be_hashed + sizeof(seqnum), &size, sizeof(size));
+	
+	// Calcolo l'hash
+	unsigned char* digets_buffer;
+	size_t digets_buffer_len;
+	if(hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len, session) < 0)
+		return 0;
+	
+	// Copio il numero sequenziale, size e hash nel buffer che verrà inviato
+	size_t output_buffer_len = sizeof(seqnum) + sizeof(size) + digets_buffer_len;
+	unsigned char output_buffer[output_buffer_len];
+	memcpy(output_buffer, &seqnum, sizeof(seqnum));
+	memcpy(output_buffer + sizeof(seqnum), &size, sizeof(size));
+	memcpy(output_buffer + sizeof(seqnum) + sizeof(size), digets_buffer, digets_buffer_len);
+	
+	delete[] digets_buffer;
+	
+	// Invio i dati
+	size_t sent = 0;
+	ssize_t ret;
+	
+	while(sent < output_buffer_len){
+		ret = send(session->get_fd(), output_buffer + sent, output_buffer_len - sent, 0);
+		//std::cout << "Inviati: " << ret << " byte" << std::endl;
+		if(ret < 0){
+			return -1;
+		} 
+		sent += ret;
+	}
+	return (sent == output_buffer_len)?1:(-1);
 }
 
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen){

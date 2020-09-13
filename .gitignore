@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+server_folder/*
+server
+client
