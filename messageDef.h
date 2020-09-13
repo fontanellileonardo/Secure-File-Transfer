@@ -1,7 +1,8 @@
+// TODO: ma che dite, lo cambiamo il nome di questo file? Dato che ci si è messo tutte le costanti in generale
 #define COMMAND_HELP 1
 #define COMMAND_UPLOAD 2
 #define COMMAND_DOWNLOAD 3
-#define COMMAND_LIST 4
+#define COMMAND_FILELIST 4
 #define COMMAND_QUIT 5
 #define COMMAND_INVALID 6
 
@@ -22,6 +23,15 @@
 
 #define MAX_CHAR_INPUT 1024
 //numero massimo di caratteri inseribili per messaggio in una linea senza andare a capo
+
+#define FRAGM_SIZE 512000 // 512 KiB
+#define BLOCK_SIZE 16
+
+#define HASH_KEY_LENGTH 32   // 32 byte
+
+#define CLIENT_FILES_PATH "client_files"
+
+#define SERVER_FILES_PATH "server_files"
 
 #define MESSAGE_INVALID_COMMAND "Comando non valido"
 

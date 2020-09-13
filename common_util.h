@@ -10,6 +10,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <fstream>
+
+#include "messageDef.h"
 
 class CustomBN{
 	private:
@@ -21,6 +24,7 @@ class CustomBN{
 		bool initialize(char* buffer, size_t size);
 		bool get_next(char* buffer, size_t size);
 };
+
 
 class Session{
 	private:
@@ -87,3 +91,7 @@ int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session);
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen);
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int verify_cert(X509_STORE *store, X509 *cert);
+void encrypt(int TCP_socket);
+int encryptAndSendFile(size_t file_len, unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket);
+int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv);
+void decrypt(int TCP_socket);
