@@ -716,7 +716,14 @@ int main(int argc, char *argv[]){
 								temp1[list.size()] = '\0';
 								
 								// Invio la lista
-								send_data_encr(temp1, (list.size() + 1), client);
+								int ret;
+								ret = send_data_encr(temp1, (list.size() + 1), client);
+								if(ret < 1){
+									if(ret == 0)
+										quit_client(i, &master, true);
+									else
+										quit_client(i, &master, false);
+								}
 							}
 							
 							break;

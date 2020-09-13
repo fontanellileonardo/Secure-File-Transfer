@@ -338,37 +338,49 @@ int get_random(char* buffer, size_t buflen){
 	return 0;
 }
 
-int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len){
+int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len, Session* session){
 	unsigned int digestlen;
 	*digest = new unsigned char[EVP_MD_size(EVP_sha256())];
 	
-	EVP_MD_CTX* ctx;
-	ctx = EVP_MD_CTX_new();
+	size_t key_auth_len = EVP_CIPHER_key_length(EVP_aes_128_cbc());//TODO: cambiare la dimensione della chiave
+	char key_auth_buffer[key_auth_len];
+	session->get_key_encr(key_auth_buffer);
+	
+	//EVP_MD_CTX* ctx;
+	//ctx = EVP_MD_CTX_new();
+	HMAC_CTX* ctx = HMAC_CTX_new();
 	if(ctx == NULL)
 		return -1;
-	if(EVP_DigestInit(ctx, EVP_sha256()) != 1){
-		EVP_MD_CTX_free(ctx);
+	//if(EVP_DigestInit(ctx, EVP_sha256()) != 1){
+	if(HMAC_Init_ex(ctx, key_auth_buffer, key_auth_len, EVP_sha256(), NULL) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
 		return -1;
 	}
-	if(EVP_DigestUpdate(ctx, msg, msg_len) != 1){
-		EVP_MD_CTX_free(ctx);
+	//if(EVP_DigestUpdate(ctx, msg, msg_len) != 1){
+	if(HMAC_Update(ctx, msg, msg_len) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
 		return -1;
 	}
-	if(EVP_DigestFinal(ctx, *digest, &digestlen) != 1){
-		EVP_MD_CTX_free(ctx);
+	//if(EVP_DigestFinal(ctx, *digest, &digestlen) != 1){
+	if(HMAC_Final(ctx, *digest, &digestlen) != 1){
+		//EVP_MD_CTX_free(ctx);
+		HMAC_CTX_free(ctx);
 		return -1;
 	}
 	*digest_len = (size_t)digestlen;
 	
-	EVP_MD_CTX_free(ctx);
+	//EVP_MD_CTX_free(ctx);
+	HMAC_CTX_free(ctx);
 	return 0;
 }
 
-int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest){
+int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest, Session* session){
 	unsigned char* digest;
 	size_t digest_len;
 	
-	if(hash_bytes(msg, msg_len, &digest, &digest_len) < 0)
+	if(hash_bytes(msg, msg_len, &digest, &digest_len, session) < 0)
 		return -1;
 	
 	if(CRYPTO_memcmp(digest, received_digest, digest_len) == 0){
@@ -425,7 +437,8 @@ int load_private_key(std::string filename, std::string password, EVP_PKEY** prvk
 // Alloca un nuovo buffer e vi inserisce i dati ricevuti.
 // Deallocare sempre il buffer non appena i dati in esso contenuti non servono più
 int receive_data(unsigned int fd, char** input_buffer, size_t* buflen){
-	size_t buflen_n, received = 0;
+	uint32_t buflen_n;
+	size_t received = 0;
 	ssize_t ret = 0;
 	
 	// Ricevo dimensione dei dati in ingresso
@@ -482,7 +495,7 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	}
 	
 	if(received != buflen)
-		return -1;
+		return 0;
 	
 	// Controllo se il numero sequenziale è corretto
 	uint32_t seqnum = session->get_counterpart_nonce();
@@ -492,7 +505,7 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	}
 	
 	// Controllo l'hash
-	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256()))) != 1){
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
 		std::cerr << "Errore hash" << std::endl;
 		return -1;
 	}
@@ -527,7 +540,7 @@ int receive_size_hmac(Session* session, size_t* size){
 	}
 	
 	// Controllo l'hash
-	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256()))) != 1){
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
 		std::cerr << "Errore hash" << std::endl;
 		return -1;
 	}
@@ -542,7 +555,7 @@ int send_data(unsigned int fd, const char* buffer, size_t buflen){
 	size_t sent = 0;
 	ssize_t ret;
 	
-	size_t buflen_n = htonl(buflen);
+	uint32_t buflen_n = htonl(buflen);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 	
 	while(sent < buflen){
@@ -566,7 +579,7 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	// Recupero il numero sequenziale e ne controllo la validità
 	uint32_t seqnum = session->get_my_nonce();
 	if(seqnum == (UINT32_MAX - 1)){// Me ne servono 2, uno per la dimensione e uno per il messaggio da inviare, dunque: UINT32_MAX - 1
-		return -1;
+		return 0;
 		//std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
 		//quit_client(i, &master, true);
 		//continue;
@@ -577,7 +590,8 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	// Cifro il messggio (contenuto in buffer)
 	char* ciphertext_buffer;
 	size_t ciphertext_buffer_len;
-	encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer);
+	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
+		return 0;
 	
 	// Copio il numero sequenziale e messaggio nel buffer su cui verrà calcolato l'hash
 	size_t to_be_hashed_len = sizeof(seqnum_msg) + ciphertext_buffer_len;
@@ -588,7 +602,8 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	// Calcolo l'hash di (numero sequenziale, messaggio)
 	unsigned char* digets_buffer;
 	size_t digets_buffer_len;
-	hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len);
+	if(hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len, session) < 0)
+		return 0;
 	
 	// Copio il numero sequenziale, messaggio e hash nel buffer che verrà inviato
 	size_t output_buffer_len = sizeof(seqnum_msg) + ciphertext_buffer_len + digets_buffer_len;
@@ -599,15 +614,18 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	
 	delete[] ciphertext_buffer;
 	delete[] digets_buffer;
-	session->get_my_nonce();// Incremento il contatore interno perchè ho incrementato "seqnum_msg" di uno
-	
+	ssize_t ret;
 	
 	// Invio la dimensione (protetta da hash) del messaggio che sto per inviare
-	send_size_hmac(htonl(seqnum), htonl(output_buffer_len), session);// TODO: gestire l'errore
+	ret = send_size_hmac(htonl(seqnum), htonl(output_buffer_len), session);
+	if(ret < 1)
+		return ret;
+	
+	// Incremento il contatore interno perchè ho incrementato "seqnum_msg" di uno
+	session->get_my_nonce();
 	
 	// Invio i dati
 	size_t sent = 0;
-	ssize_t ret;
 	
 	while(sent < output_buffer_len){
 		ret = send(session->get_fd(), output_buffer + sent, output_buffer_len - sent, 0);
@@ -617,11 +635,11 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 		} 
 		sent += ret;
 	}
-	return (sent == output_buffer_len)?0:(-1);
+	return (sent == output_buffer_len)?1:(-1);
 }
 
 void send_error(unsigned int fd){
-	size_t buflen_n = htonl(0);
+	uint32_t buflen_n = htonl(0);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 }
 
@@ -635,7 +653,8 @@ int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
 	// Calcolo l'hash
 	unsigned char* digets_buffer;
 	size_t digets_buffer_len;
-	hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len);// TODO: gestire l'errore
+	if(hash_bytes(to_be_hashed, to_be_hashed_len, &digets_buffer, &digets_buffer_len, session) < 0)
+		return 0;
 	
 	// Copio il numero sequenziale, size e hash nel buffer che verrà inviato
 	size_t output_buffer_len = sizeof(seqnum) + sizeof(size) + digets_buffer_len;
@@ -658,7 +677,7 @@ int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
 		} 
 		sent += ret;
 	}
-	return (sent == output_buffer_len)?0:(-1);
+	return (sent == output_buffer_len)?1:(-1);
 }
 
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen){

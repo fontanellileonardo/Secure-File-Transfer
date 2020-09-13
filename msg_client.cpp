@@ -577,8 +577,8 @@ int main(int argc, char* argv[]){
 						
 						// Ricevo i dati in ingresso (lista file)
 						int ret = receive_data_encr(&input_buffer, &buflen, &session);
-						if(ret < 0)
-							;//TODO: gestire l'errore
+						if(ret < 1)
+							terminate(0);
 						
 						// Stampo la lista
 						std::cout << input_buffer << std::endl;

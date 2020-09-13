@@ -64,7 +64,7 @@ int recv_command(uint8_t &message_type, Session* client){
 	}
 	
 	// Controllo l'hash
-	int ret = hash_verify(command, 4 + 16, command + 4 + 16);
+	int ret = hash_verify(command, 4 + 16, command + 4 + 16, client);
 	if(ret < 1)
 		return ret;
 	

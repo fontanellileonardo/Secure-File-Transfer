@@ -47,7 +47,7 @@ int send_command(uint8_t command, Session &session){
 	
 	unsigned char* digets_buffer;
 	size_t digets_buffer_len;
-	hash_bytes(temp, temp_len, &digets_buffer, &digets_buffer_len);
+	hash_bytes(temp, temp_len, &digets_buffer, &digets_buffer_len, &session);
 	
 	size_t output_buffer_len = sizeof(seqnum) + ciphertext_buffer_len + digets_buffer_len;
 	unsigned char output_buffer[output_buffer_len];

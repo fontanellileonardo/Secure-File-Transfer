@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <fstream>
 #include <iostream>
+#include <openssl/hmac.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
@@ -71,8 +72,8 @@ int encrypt_symm(const unsigned char* plaintext, size_t plaintextlen, unsigned c
 size_t get_file_size(std::string filename);
 std::string get_file_size_string(std::string filename);
 int get_random(char* buffer, size_t buflen);
-int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len);
-int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest);
+int hash_bytes(unsigned char* msg, size_t msg_len, unsigned char** digest, size_t* digest_len, Session* session);
+int hash_verify(unsigned char* msg, size_t msg_len, unsigned char* received_digest, Session* session);
 int load_cert(std::string filename, X509 **cert);
 int load_crl(std::string filename, X509_CRL** crl);
 int load_private_key(std::string filename, std::string password, EVP_PKEY** prvkey);
