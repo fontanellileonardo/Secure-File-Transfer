@@ -780,21 +780,30 @@ long long int fsize() {
 	return fsize;
 }
 
-// Ritorna -1 in caso di errore, 0 altrimenti
-int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string fileName, Session* session){	
-	
-	std::cout << "Upload file sul server in corso..." << std::endl;
-
+bool send_file_name(std::string fileName, Session* session) {
 	// invia il nome del file (inviando prima la dim del messaggio che riceverà la controparte)
 	// +1 per includere il carattere di fine stringa
 	if(send_data_encr(fileName.c_str(), fileName.size() + 1, session) == -1) {
 		std::cerr<<"Errore nell'invio del nome del file"<<std::endl;
+		return false;
+	}
+	return true;
+}
+
+int receive_file_name(char** fileName, Session* session){
+	size_t fileNameLen;
+	// Ricevo il nome del file
+	if(receive_data_encr(&(*fileName), &fileNameLen, session) == -1){
+		std::cerr << "Errore nella ricezione del nome del file" << std::endl;
 		return -1;
 	}
+	return fileNameLen;
+}
+
+// Ritorna -1 in caso di errore, 0 altrimenti
+int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session){	
 
 	//Calcola la grandezza del file
-	std::string path = CLIENT_FILES_PATH;
-	path.append(fileName);
 	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
 	if(!fs) { 
 		std::cerr<<"Errore apertura file."<<std::endl; 
@@ -820,7 +829,7 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string f
 
 		// Invia il chunk
 		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
-			std::cerr << "key_encr non è stata inizializzata" << std::endl;
+			std::cerr << "Errore nell'invio del chunk" << std::endl;
 			return -1;
 		}				
 	}
@@ -832,7 +841,7 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string f
 
 		// invio ultimo frammento
 		if(send_data_encr(buffer, (file_len%FRAGM_SIZE), session) == -1) {
-			std::cerr << "key_encr non è stata inizializzata" << std::endl;
+			std::cerr << "Errore nell'invio dell'ultimo frammento" << std::endl;
 			return -1;
 		}  
     }
@@ -842,34 +851,17 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string f
 	// free the memory
 	memset(buffer, 0, FRAGM_SIZE);
 	delete[] buffer;
-
-	std::cout << "Upload file completato" << std::endl;
 	
 	return 0;
 }
 
-int decryptAndWriteFile(int TCP_socket, Session* session){
-
-	std::cout << "Upload file sul server in corso..." << std::endl;
+int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	
 	size_t fileNameLen = NULL;
-	char* fileName = NULL;
 
 	char* fileSize = NULL;
 	int file_len;
 	size_t fileSizeLen;
-
-	unsigned char *key = new unsigned char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-	if(session->get_key_encr((char*)key) == -1){
-		std::cerr << "key_encr non è stata inizializzata" << std::endl;
-		return -1;
-	}
-	
-	// Ricevo il nome del file
-	if(receive_data_encr(&fileName, &fileNameLen, session) == -1){
-		std::cerr << "Errore nella ricezione del nome del file" << std::endl;
-		return -1;
-	}
 
 	// Ricevo la dimensione del file
 	if(receive_data_encr(&fileSize, &fileSizeLen, session) == -1){
@@ -885,9 +877,6 @@ int decryptAndWriteFile(int TCP_socket, Session* session){
 	
 	unsigned int i;
 
-	// Appendo il nome del file al path della cartella e apro il file in cui scrivere 
-	std::string path = SERVER_FILES_PATH;
-	path.append(fileName);
 	std::fstream fs;
 	fs.open(path.c_str(), std::fstream::out | std::fstream::binary);
 	if(!fs) {
@@ -901,6 +890,7 @@ int decryptAndWriteFile(int TCP_socket, Session* session){
 			std::cerr << "Errore nella ricezione del chunk" << std::endl;
 			return -1;
 		}
+		
 		fs.write(chunk, chunkSize);
 		delete[] chunk;
 		chunk = NULL;
@@ -916,11 +906,8 @@ int decryptAndWriteFile(int TCP_socket, Session* session){
 
 	// Chiudo il fstream e dealloco i puntatori
 	fs.close();
-	delete[] fileName;
 	delete[] chunk;
 	delete[] fileSize;
-
-	std::cout << "Upload file completato" << std::endl;
 
 	return 0;	
 }

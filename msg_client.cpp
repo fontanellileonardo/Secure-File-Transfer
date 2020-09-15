@@ -499,21 +499,79 @@ int main(int argc, char* argv[]){
 							terminate(-1);
 						}
 
+						// Invio il nome del file
+						if(!send_file_name(file_command, &session)) {
+							std::cerr << "Errore nell'invio del nome del file. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+
+						std::cout << "Upload del file in corso..." << std::endl;
 						// inizializzo il buffer che conterrà il ciphertext
 						size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
 						unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
 
+
 						//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
-						if(encryptAndSendFile(ciphertext, TCP_socket, file_command, &session) == -1) {
+						if(encryptAndSendFile(ciphertext, TCP_socket, filePath, &session) == -1) {
 							std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
 							terminate(-1);
 						}
+
+						std::cout << "Upload del file completato" << std::endl;
 						
 						delete[] ciphertext;	
 					}	
 					break;						
 				case COMMAND_DOWNLOAD:{
+					std::cout<<"Inserire nome del file"<<std::endl;
+					file_command.clear();
+					std::cin.clear();
+					std::getline(std::cin, file_command);
 					
+					// Controllo caratteri inseriti siano validi
+					if(!verify_input_command(file_command)){
+						std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
+						terminate(-1);
+					}
+
+					// Invio il comando di download
+					if (send_command(COMMAND_DOWNLOAD, session) != 1){
+						std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+						terminate(-1);
+					}
+
+					// Invio il nome del file
+					if(send_file_name(file_command, &session) == -1) {
+						std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+						return -1;
+					}
+
+					//riceve l'ack se il file richiesto esiste, nack se non esiste
+					char* ack = NULL;
+					size_t dim_ack;
+					if(receive_data_encr(&ack, &dim_ack, &session)  == -1) {
+						std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+						terminate(-1);
+					}
+
+					if( std::strcmp(ack,"true") == 0) {
+
+						std::cout << "Download del file in corso..." << std::endl;
+
+						std::string filePath = CLIENT_FILES_PATH;
+						filePath.append(file_command);
+						// Ricevo il file richiesto
+						if(decryptAndWriteFile(TCP_socket, filePath, &session) == -1 ) {
+							std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+
+						std::cout << "Download del file completato" << std::endl;
+
+					} else {
+						std::cout << "Il file richiesto non esiste sul server" << std::endl;
+					}
+					delete[] ack;
 				}
 					break;
 				case COMMAND_QUIT:

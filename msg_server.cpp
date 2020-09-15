@@ -598,31 +598,80 @@ int main(int argc, char *argv[]){
 							
 							break;
 						case COMMAND_DOWNLOAD: {
+							std::cout << "Comando di download ricevuto..." << std::endl;
+							 
+							// Ricevo il nome del file
+							char* fileName = NULL;
+							if(receive_file_name(&fileName, client) == -1) {
+								std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+								return -1;
+							}
+
+							// controlla se il file esiste
+							std::string filePath = SERVER_FILES_PATH;
+							filePath.append(fileName);
+							if(!checkFile(filePath)){
+								std::cout << "Il file richiesto dal client non esiste" << std::endl;
+								std::string nack = "false";
+								if(send_data_encr(nack.c_str(), nack.size() + 1, client) == -1){
+									std::cerr << "Errore nell'invio del NACK" << std::endl;
+									terminate(-1);
+								};
+							}
+							else{
+								std::cout << "Prima dell'invio dell'ack" << std::endl;
+								std::string ack = "true";
+								if(send_data_encr(ack.c_str(), ack.size() + 1, client) == -1){
+									std::cerr << "Errore nell'invio dell'ACK" << std::endl;
+									terminate(-1);
+								}
+
+								std::cout<<"File esistente"<<std::endl;
+								// inizializzo il buffer che conterrà il ciphertext
+								size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
+								unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
+
+								std::cout << "Download del file in corso..." << std::endl;
+
+								//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
+								if(encryptAndSendFile(ciphertext, i, filePath, client) == -1) {
+									std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
+									terminate(-1);
+								}
+
+								std::cout << "Download del file completato" << std::endl;
+							
+								delete[] ciphertext;
+							}
+							delete[] fileName;
 
 						}
 							break;
 						case COMMAND_UPLOAD:
 						{
-							//TODO: implementare funzionalità	
 							std::cout<<"Comando di upload ricevuto..."<<std::endl;
 
-							/*
-							// Ricavo la chiave per decriptare
-							unsigned char* key = new unsigned char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
-							if(client->get_key_encr((char*)key) == -1) {
-								std::cerr<<"key_encr non è stata inizializzata"<<std::endl;
+							// Ricevo il nome del file
+							char* fileName = NULL;
+							if(receive_file_name(&fileName, client) == -1) {
+								std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+								return -1;
+							}
+
+							std::cout << "Upload del file in corso..." << std::endl;
+
+							std::string filePath = SERVER_FILES_PATH;
+							filePath.append(fileName);
+
+							// come iv utilizzo il seq num del client
+							if(decryptAndWriteFile(i, filePath, client) == -1){
+								std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
 								terminate(-1);
 							}
 
-							// Ricavo l'iv che sarà il seq num
-							unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
-							client->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
-							*/
+							std::cout << "Upload del file completato" << std::endl;
 
-							// come iv utilizzo il seq num del client
-							decryptAndWriteFile(i, client);
-
-							//delete[] key;
+							delete[] fileName;
 						}
 							break;
 						case COMMAND_QUIT:
