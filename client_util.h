@@ -14,7 +14,7 @@
 #include "common_util.h"
 #include "messageDef.h"
 
-uint8_t identifyCommand(char* command);
+uint8_t identifyCommand(std::string command);
 void print_prompt();
 int send_command(uint8_t command, Session &session);
 void quitClient(int socket);

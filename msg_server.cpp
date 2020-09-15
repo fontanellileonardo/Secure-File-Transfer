@@ -276,7 +276,6 @@ int main(int argc, char *argv[]){
 					}
 					
 					fflush(stdout);//TODO: a cosa serve?
-					std::cout << "Ho ricevuto il comando: " << message_type << std::endl;
 					switch(message_type){
 						case HANDSHAKE:
 							// Ricevo i dati in ingresso (certificato)
@@ -598,12 +597,33 @@ int main(int argc, char *argv[]){
 							}
 							
 							break;
-						case COMMAND_DOWNLOAD:
-							std::cout<<"Comando di download ricevuto"<<std::endl;
-							decrypt(i);
+						case COMMAND_DOWNLOAD: {
+
+						}
 							break;
-						case COMMAND_UPLOAD:		
+						case COMMAND_UPLOAD:
+						{
 							//TODO: implementare funzionalità	
+							std::cout<<"Comando di upload ricevuto..."<<std::endl;
+
+							/*
+							// Ricavo la chiave per decriptare
+							unsigned char* key = new unsigned char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+							if(client->get_key_encr((char*)key) == -1) {
+								std::cerr<<"key_encr non è stata inizializzata"<<std::endl;
+								terminate(-1);
+							}
+
+							// Ricavo l'iv che sarà il seq num
+							unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
+							client->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
+							*/
+
+							// come iv utilizzo il seq num del client
+							decryptAndWriteFile(i, client);
+
+							//delete[] key;
+						}
 							break;
 						case COMMAND_QUIT:
 							quit_client(i, &master, false);

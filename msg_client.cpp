@@ -50,7 +50,8 @@ int main(int argc, char* argv[]){
 	char* input_buffer = NULL;
 	uint8_t message_type;
 	uint8_t command;
-	char buffer[MAX_COMMAND_INPUT];
+	std::string buffer_command;
+	std::string file_command;
 	int ret;
 	
 	//controllo che ci siano tutti i parametri necessari
@@ -435,11 +436,19 @@ int main(int argc, char* argv[]){
 		print_prompt();
 		select(fdmax+1, &read_fds, NULL, NULL, NULL);
 		if(FD_ISSET(fileno(stdin), &read_fds)){//input da terminale
+			buffer_command.clear();
+			std::cin.clear();
+			std::getline(std::cin, buffer_command);
+			while(!verify_input_command(buffer_command)) {
+				std::cerr<<"Caratteri inseriti non validi"<<std::endl;
+				buffer_command.clear();
+				std::cin.clear();
+				std::getline(std::cin, buffer_command);
+			}
 			// controllare come prendere byte da tastiera
 			// SLIDE 11-12 SECURECODING
-			//fgets(buffer, sizeof(buffer), stdin);	
-			std::cin>>buffer;		
-  		   	command = identifyCommand(buffer);
+			//fgets(buffer, sizeof(buffer), stdin);		
+  		   	command = identifyCommand(buffer_command);
 			switch(command){
 				case COMMAND_LIST:
 					{
@@ -465,25 +474,46 @@ int main(int argc, char* argv[]){
 				case COMMAND_HELP:
 					std::cout << MESSAGE_USER_COMMAND << std::endl;
 					break;				
-				case COMMAND_UPLOAD:	
+				case COMMAND_UPLOAD:
+					{
+						std::cout<<"Inserire nome del file"<<std::endl;
+						file_command.clear();
+						std::cin.clear();
+						std::getline(std::cin, file_command);
+						//std::cin>>command_buffer;	
+						if(!verify_input_command(file_command)){
+							std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
+							terminate(-1);
+						} 
+
+						// controlla se il file esiste
+						std::string filePath = CLIENT_FILES_PATH + file_command;
+						if(!checkFile(filePath)){
+							std::cerr << "File inserito non esiste" << std::endl;
+							terminate(-1);
+						}
+
+						// Invio il comando di upload
+						if (send_command(COMMAND_UPLOAD, session) != 1){
+							std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+
+						// inizializzo il buffer che conterrà il ciphertext
+						size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
+						unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
+
+						//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
+						if(encryptAndSendFile(ciphertext, TCP_socket, file_command, &session) == -1) {
+							std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+						
+						delete[] ciphertext;	
+					}	
 					break;						
 				case COMMAND_DOWNLOAD:{
-					std::cout << "Comando di download ricevuto" << std::endl;
-					// Invio il comando di upload
-					if (send_command(COMMAND_DOWNLOAD, session) != 1){
-						std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
-						terminate(-1);
-					}
-					// TODO: cambia con vera chiave
-					unsigned char *key = (unsigned char*) "0123456789012345";
-					size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
-					unsigned char* ciphertext = new unsigned char[dim_ct + BLOCK_SIZE];
-					// TODO: Passa il vero iv
-					unsigned char* iv;
-					std::string fileName = "ice.jpg";
-					//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
-					encryptAndSendFile(key, iv, ciphertext, TCP_socket, fileName);
-					delete[] ciphertext;
+					
 				}
 					break;
 				case COMMAND_QUIT:

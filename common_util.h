@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <fstream>
+#include <regex>
 
 #include "messageDef.h"
 
@@ -68,6 +69,8 @@ class Session{
 		int set_key_encr(const EVP_CIPHER *type, char* key);
 };
 
+bool verify_input_command(std::string buf);
+bool checkFile(std::string filePath);
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl);
 int decrypt_asym(unsigned char* ciphertext, size_t ciphertextlen, unsigned char* encrypted_key, size_t encrypted_key_len, unsigned char* iv, EVP_PKEY* prvkey, unsigned char** plaintext, size_t* plaintextlen);
 int decrypt_symm(unsigned char* ciphertext, size_t cipherlen, unsigned char** plaintext, size_t* plaintextlen, const EVP_CIPHER *type, const unsigned char* key, const unsigned char* iv);
@@ -91,8 +94,6 @@ int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session);
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen);
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int verify_cert(X509_STORE *store, X509 *cert);
-//void encrypt(int TCP_socket);
 long long int fsize();
-int encryptAndSendFile(unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket, std::string fileName);
-int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv);
-void decrypt(int TCP_socket);
+int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string fileName, Session* session);
+int decryptAndWriteFile(int TCP_socket,  Session* session);

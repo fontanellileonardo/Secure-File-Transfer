@@ -142,6 +142,23 @@ int Session::set_key_encr(const EVP_CIPHER *type, char* key){
 	return 0;
 }
 
+bool verify_input_command(std::string buf){
+	std::regex b("[A-Za-z0-9.-_!]+");
+	if(std::regex_match(buf, b))
+		return true;
+	else 
+		return false;
+}
+
+bool checkFile(std::string filePath){
+	if (FILE *file = fopen(filePath.c_str(), "r")) {
+        fclose(file);
+        return true;
+    } else {
+        return false;
+    }   
+}
+
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
 	*store = X509_STORE_new();
 	if(store == NULL){
@@ -509,7 +526,8 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	}
 	
 	// Controllo l'hash
-	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), 
+		(unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
 		std::cerr << "Errore hash" << std::endl;
 		return -1;
 	}
@@ -520,7 +538,8 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	unsigned char iv_buffer[EVP_CIPHER_iv_length(EVP_aes_128_cbc())];
 	session->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc()));
 	
-	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), (unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
+	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), 
+		(unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
 		std::cerr << "Errore decrypt" << std::endl;
 		return -1;
 	}
@@ -594,7 +613,8 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	// Cifro il messggio (contenuto in buffer)
 	char* ciphertext_buffer;
 	size_t ciphertext_buffer_len;
-	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
+	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, 
+		&ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
 		return 0;
 	
 	// Copio il numero sequenziale e messaggio nel buffer su cui verrà calcolato l'hash
@@ -647,6 +667,9 @@ void send_error(unsigned int fd){
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 }
 
+
+
+// seqnum generarlo con get_my_nonce, size = chuncki
 int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
 	// Copio il numero sequenziale e size nel buffer su cui verrà calcolato l'hash
 	size_t to_be_hashed_len = sizeof(seqnum) + sizeof(size);
@@ -757,219 +780,147 @@ long long int fsize() {
 	return fsize;
 }
 
-int encryptAndSendFile(unsigned char* key, unsigned char* iv, unsigned char * ciphertext, int TCP_socket, std::string fileName){	
-	int i;
-	EVP_CIPHER_CTX * ctx;
-	int len = 0;
-	int ciphertext_len = 0;
+// Ritorna -1 in caso di errore, 0 altrimenti
+int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string fileName, Session* session){	
 	
-	//create and initialize context
-	ctx = EVP_CIPHER_CTX_new();
-	
-	//Encrypt init
-	EVP_EncryptInit(ctx, EVP_aes_128_cbc(), key, NULL);
+	std::cout << "Upload file sul server in corso..." << std::endl;
+
+	// invia il nome del file (inviando prima la dim del messaggio che riceverà la controparte)
+	// +1 per includere il carattere di fine stringa
+	if(send_data_encr(fileName.c_str(), fileName.size() + 1, session) == -1) {
+		std::cerr<<"Errore nell'invio del nome del file"<<std::endl;
+		return -1;
+	}
 
 	//Calcola la grandezza del file
 	std::string path = CLIENT_FILES_PATH;
-	//TODO: controlla caratteri passati dall'utente
 	path.append(fileName);
-	std::cout<<"File path:"<<path<<std::endl;
 	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
-	if(!fs) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
-	long long int file_len = fsize();
-	std::cout<<"dim file in encrypt: " << file_len << std::endl;
-
-	//invio lunghezza file	
-	long long int ufile_len = htonl(file_len);
-	int ret = send(TCP_socket, &ufile_len, sizeof(uint64_t), 0);
-	std::cout << "Valore di ret: "<< ret << std::endl;
-	if (ret <= 0) {
-		std::cout << "Errore nell'invio della grandezza del file"<< std::endl;
-		exit(1);
+	if(!fs) { 
+		std::cerr<<"Errore apertura file."<<std::endl; 
+		return -1; 
 	}
-	std::cout<<"lunghezza file: "<<file_len<<std::endl;
+	long long int file_len = fsize();
+	std::string fl = std::to_string(file_len);
+
+	// TODO: va bene sta cosa?? Ha senso convertire un intero a stringa?? Perchè altrimenti la encrypt non cripta numeri penso..
+	// invia la dimensione del file
+	if(send_data_encr(fl.c_str(), fl.size(), session) == -1) {
+		std::cerr<<"Errore nell'invio della dimensione del file"<<std::endl;
+		return -1;
+	}
 	
 	// conterrà una porzione del file da inviare
 	char* buffer = new char[FRAGM_SIZE];
-	size_t nread;
-	uint32_t ulen_cipher;
-	std::cout <<"Iterazioni da fare nel for sono:"<< (file_len/FRAGM_SIZE ) << std::endl;
-	for( i = 0; i < (file_len/FRAGM_SIZE); i++){
-		std::cout<<"Iterazione:"<<i<<std::endl;
-		fs.read(buffer,FRAGM_SIZE);	
-		EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char*)buffer, FRAGM_SIZE);
-		if(len == 0) {
-			std::cerr << "Errore nella EncryptUpdate" << std::endl;
-			exit(1);
-		}
-		ciphertext_len += len;
-		ulen_cipher = htonl(len);
-		std::cout << "grandezza chunck: " << len << std::endl;
-		int ret = send(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
-		std::cout << "Valore di ret nell'invio della grandezza del chunck: "<< ret << std::endl;
-		if (ret != sizeof(uint32_t)) {
-			std::cout << "Errore nell'invio della grandezza del chunck"<< std::endl;
-			exit(1);
-		}
-		std::cout<<"grandezza chunck in bit: "<< ulen_cipher << std::endl;
-		ret = send(TCP_socket, ciphertext, len, 0);
-		std::cout << "Valore di ret nell'invio del chunck: "<< ret << std::endl;
-		if (ret != len) {
-			std::cout << "Errore nell'invio del chunck"<< std::endl;
-			exit(1);
-		}	
-		std::cout<<"ciphertext is: "<<std::endl;	
-		std::cout<<std::endl<<std::endl;				
+
+	for( int i = 0; i < (file_len/FRAGM_SIZE); i++){
+
+		// Leggo il frammento di file da inviare
+		fs.read(buffer,FRAGM_SIZE);
+
+		// Invia il chunk
+		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
+			std::cerr << "key_encr non è stata inizializzata" << std::endl;
+			return -1;
+		}				
 	}
-	std::cout << "Sono fuori dal for" << std::endl;
-	int index = 0;
+	
 	if (file_len % FRAGM_SIZE != 0) {
+
+		// leggo l'ultimo frammento da inviare
 		fs.read((char*)buffer,(file_len%FRAGM_SIZE));
-        EVP_EncryptUpdate(ctx, &ciphertext[index], &len, (unsigned char*)buffer, file_len%FRAGM_SIZE);
-		index +=len;
-		ciphertext_len +=len;    
+
+		// invio ultimo frammento
+		if(send_data_encr(buffer, (file_len%FRAGM_SIZE), session) == -1) {
+			std::cerr << "key_encr non è stata inizializzata" << std::endl;
+			return -1;
+		}  
     }
-	// Aggiungo il padding
-	if( 1 != EVP_EncryptFinal(ctx, &ciphertext[index], &len)) {
-		std::cout<<"errore encr final, valore di len: "<<len<<std::endl;
-		exit(1);
-	}	
-	ciphertext_len +=len;
-	len += index;	
-	ulen_cipher = htonl((size_t)len);
-	std::cout<<"grandezza chunck dopo send: "<< ntohl(ulen_cipher) << std::endl;
-	ret = send(TCP_socket, &ulen_cipher, sizeof(uint32_t), 0);
-	std::cout << "Valore di ret nell'invio della grandezza del chunck: "<< ret << std::endl;
-	if (ret != sizeof(uint32_t)) {
-		std::cout << "Errore nell'invio della grandezza del chunck"<< std::endl;
-		exit(1);
-	} 
-	ret = send(TCP_socket, ciphertext, len, 0);	
-	std::cout << "Valore di ret nell'invio del chunck: "<< ret << std::endl;
-	if (ret != len) {
-		std::cout << "Errore nell'invio del chunck"<< std::endl;
-		exit(1);
-	}
-	//clean context
-	EVP_CIPHER_CTX_free(ctx);
+	
 	fs.close();
+
 	// free the memory
 	memset(buffer, 0, FRAGM_SIZE);
 	delete[] buffer;
 
-	return ciphertext_len;
+	std::cout << "Upload file completato" << std::endl;
+	
+	return 0;
 }
 
-int decryptAndWriteFile(int TCP_socket,  unsigned char* key, unsigned char* iv){
-	
-	uint64_t ufile_len;
-	size_t file_len;
-	
-	recv(TCP_socket, &ufile_len, sizeof(uint64_t), 0);
-	file_len = ntohl(ufile_len);
-	std::cout<<"dimensione file:"<< file_len <<std::endl;
-	
-	EVP_CIPHER_CTX * dctx;
-	int dlen = 0;
-	int plaintext_len = 0;
-	
-	//create and initialize context
-	dctx = EVP_CIPHER_CTX_new();
-	//decrypt init
-	EVP_DecryptInit(dctx, EVP_aes_128_cbc(), key, NULL);
-	//decrypt update, one call is enough because our message is very short
-	
-	// string o lasciare unsigned char??
-	unsigned char* ciphertext = new unsigned char[NUM_BLOCKS + BLOCK_SIZE];
-	unsigned char* plaintext = new unsigned char[NUM_BLOCKS + BLOCK_SIZE];
-	uint32_t ulen_cipher;
-	uint len_cipher;
-	unsigned int i;
-	int fw;
+int decryptAndWriteFile(int TCP_socket, Session* session){
 
+	std::cout << "Upload file sul server in corso..." << std::endl;
+	
+	size_t fileNameLen = NULL;
+	char* fileName = NULL;
+
+	char* fileSize = NULL;
+	int file_len;
+	size_t fileSizeLen;
+
+	unsigned char *key = new unsigned char[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
+	if(session->get_key_encr((char*)key) == -1){
+		std::cerr << "key_encr non è stata inizializzata" << std::endl;
+		return -1;
+	}
+	
+	// Ricevo il nome del file
+	if(receive_data_encr(&fileName, &fileNameLen, session) == -1){
+		std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+		return -1;
+	}
+
+	// Ricevo la dimensione del file
+	if(receive_data_encr(&fileSize, &fileSizeLen, session) == -1){
+		std::cerr << "Errore nella ricezione della dimensione del file" << std::endl;
+		return -1;
+	} 
+	
+	// Converto in intero la dimensione del file
+	file_len = atoi(fileSize);
+	
+	char* chunk = NULL;
+	size_t chunkSize;
+	
+	unsigned int i;
+
+	// Appendo il nome del file al path della cartella e apro il file in cui scrivere 
 	std::string path = SERVER_FILES_PATH;
-	path.append("/ice.jpg");
-	std::cout<<"File path:"<<path<<std::endl;
+	path.append(fileName);
 	std::fstream fs;
 	fs.open(path.c_str(), std::fstream::out | std::fstream::binary);
-	if(!fs) { std::cout<<"Errore apertura file."<<std::endl; exit(1); }
+	if(!fs) {
+		std::cerr<<"Errore apertura file."<<std::endl; 
+		return -1; 
+	}
 
-	std::cout <<"Iterazioni da fare nel for sono:"<< (file_len/FRAGM_SIZE ) << std::endl;
 	int ret;
 	for(i = 0; i < (file_len/FRAGM_SIZE ); i++) {
-		std::cout<<"Iterazione:"<<i<<std::endl;
-		ret = recv(TCP_socket, &ulen_cipher, sizeof(uint32_t), MSG_WAITALL);
-		std::cout << "Valore di ret nella ricezione della grandezza del chunck: "<< ret << std::endl;
-		if(ret != sizeof(uint32_t)) {
-			std::cout<<"Errore nella ricezione della lunghezza del chunk" << std::endl;
-			exit(1);
+		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
+			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			return -1;
 		}
-		len_cipher = ntohl(ulen_cipher);
-		std::cout << "ulen_cipher dopo la recv: " << ulen_cipher << std::endl;
-		std::cout << "grandezza chuck tradotta: " << len_cipher << std::endl;
-		// Aspetto che sia ricevuto tutto il ciphertext
-		ret = recv(TCP_socket, ciphertext, len_cipher, MSG_WAITALL);
-		std::cout << "Valore di ret nella ricezione del cipher: "<< ret << std::endl; 
-		if(ret != len_cipher) {
-			std::cout<<"Errore nella ricezione del chunk" << std::endl;
-			exit(1);
-		}
-		if(!EVP_DecryptUpdate(dctx, plaintext, &dlen, ciphertext, len_cipher)) {
-			std::cout<<"errore nella DecryptUpdate. dlen: "<<dlen<<std::endl;
-			exit(1);
-		}
-		plaintext_len +=dlen;
-		fs.write((const char*)plaintext, dlen);
-		std::cout<<"plain size is: "<<dlen<<std::endl;
-		std::cout<<std::endl;	
+		fs.write(chunk, chunkSize);
+		delete[] chunk;
+		chunk = NULL;
   	}
-	std::cout<<"Sono fuori dal for"<<std::endl;
-	ret = recv(TCP_socket, &ulen_cipher, sizeof(uint32_t), MSG_WAITALL);
-	std::cout << "Valore di ret nella ricezione della grandezza del chunck: "<< ret << std::endl; 
-	if(ret == -1) {
-		std::cout<<"Errore nella ricezione del chunk" << std::endl;
-		exit(1);
-	}	
-	len_cipher = ntohl(ulen_cipher);
-	ret = recv(TCP_socket, ciphertext, len_cipher, MSG_WAITALL); 	
-	std::cout << "Valore di ret nella ricezione del chunck: "<< ret << std::endl; 
-	if(ret != len_cipher) {
-		std::cout<<"Errore nella ricezione del chunk" << std::endl;
-		exit(1);
-	}	
-	// ultimo dato ricevuto potrebbe essere o solo padding, o contenente anche del plaintext significativo	
+
 	if (file_len % FRAGM_SIZE != 0) {
-		if( !EVP_DecryptUpdate(dctx, plaintext, &dlen, ciphertext, len_cipher)) {
-				std::cout<<"errore nella DecryptUpdate. dlen: "<<dlen<<std::endl;
-				exit(1);
-			}
-			plaintext_len +=dlen;
-			fs.write((const char*)plaintext, dlen);
-	}	
-  	//decrypt finalize
-	std::cout << "byte decriptati nell'ultimo frammento prima della final: "<< dlen << std::endl;
-	if( 1 != EVP_DecryptFinal(dctx, (unsigned char*)plaintext, &dlen)) {
-		std::cout<<"errore final. dlen è: "<<dlen<<std::endl;
-		exit(1);
+		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
+			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			return -1;
+		}
+		fs.write(chunk, chunkSize);
 	}
-	std::cout << "byte decriptati con la final: "<< dlen << std::endl;
-	plaintext_len += dlen;
-	std::cout << "byte decriptati in totatle: "<< plaintext_len << std::endl;
-	if(dlen != 0)
-		fs.write((const char*)plaintext, dlen);
+
+	// Chiudo il fstream e dealloco i puntatori
 	fs.close();
-	//clean context decr
-	EVP_CIPHER_CTX_free(dctx);
-	delete[] ciphertext;
-	memset(plaintext, 0, FRAGM_SIZE);
-	delete[] plaintext;
+	delete[] fileName;
+	delete[] chunk;
+	delete[] fileSize;
+
+	std::cout << "Upload file completato" << std::endl;
 
 	return 0;	
-}
-
-void decrypt(int TCP_socket){
-	unsigned char *key = (unsigned char*) "0123456789012345";
-	unsigned char* iv;
-	decryptAndWriteFile(TCP_socket, key, iv);
-	//printf("sono fuori dal for\n");
 }
