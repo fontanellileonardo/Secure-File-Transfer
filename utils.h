@@ -1,4 +1,3 @@
-// TODO: ma che dite, lo cambiamo il nome di questo file? Dato che ci si è messo tutte le costanti in generale
 #define COMMAND_HELP 1
 #define COMMAND_UPLOAD 2
 #define COMMAND_DOWNLOAD 3
@@ -48,5 +47,4 @@
 #define CLIENT_PRVKEY "client_dir/client_prvkey.pem"
 #define CLIENT_PRVKEY_PASSWORD "password"
 
-#define SERVER_FOLDER_PATH "server_folder"
 #define AUTHORIZED_CLIENTS_PATH "authorized_clients.txt"

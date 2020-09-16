@@ -445,9 +445,6 @@ int main(int argc, char* argv[]){
 				std::cin.clear();
 				std::getline(std::cin, buffer_command);
 			}
-			// controllare come prendere byte da tastiera
-			// SLIDE 11-12 SECURECODING
-			//fgets(buffer, sizeof(buffer), stdin);		
   		   	command = identifyCommand(buffer_command);
 			switch(command){
 				case COMMAND_LIST:
@@ -480,7 +477,6 @@ int main(int argc, char* argv[]){
 						file_command.clear();
 						std::cin.clear();
 						std::getline(std::cin, file_command);
-						//std::cin>>command_buffer;	
 						if(!verify_input_command(file_command)){
 							std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
 							terminate(-1);
@@ -490,7 +486,7 @@ int main(int argc, char* argv[]){
 						std::string filePath = CLIENT_FILES_PATH + file_command;
 						if(!checkFile(filePath)){
 							std::cerr << "File inserito non esiste" << std::endl;
-							terminate(-1);
+							break;
 						}
 
 						// Invio il comando di upload
@@ -543,7 +539,7 @@ int main(int argc, char* argv[]){
 					// Invio il nome del file
 					if(send_file_name(file_command, &session) == -1) {
 						std::cerr << "Errore nella ricezione del nome del file" << std::endl;
-						return -1;
+						terminate(-1);
 					}
 
 					//riceve l'ack se il file richiesto esiste, nack se non esiste
@@ -565,7 +561,6 @@ int main(int argc, char* argv[]){
 							std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
 							terminate(-1);
 						}
-
 						std::cout << "Download del file completato" << std::endl;
 
 					} else {
@@ -583,9 +578,11 @@ int main(int argc, char* argv[]){
 		}
 		
 		if(FD_ISSET(TCP_socket, &read_fds)){// Input dalla rete
-		//TODO: controllare che byte arrivano per capire se è una disconnessione causata dalla quit_client() sul server
-		//il server si e' disconnesso
-			std::cout<<"Input dalla rete"<<std::endl;
+			//TODO: controllare che byte arrivano per capire se è una disconnessione causata dalla quit_client() sul server
+			//il server si e' disconnesso
+			std::cout<<"Ci sono problemi con il server, disconnessione..."<<std::endl;
+			// TODO: Alex, che terminate ci va??
+			terminate(-1);
 			return 0;
 		}
 	}

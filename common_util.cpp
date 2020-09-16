@@ -497,7 +497,6 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	ssize_t ret = receive_size_hmac(session, &buflen);
 	if(ret < 0)
 		return ret;
-	
 	// Alloco il buffer per i dati in ingresso
 	char input_buffer[buflen];
 	
@@ -554,7 +553,7 @@ int receive_size_hmac(Session* session, size_t* size){
 	// Ricevo i byte
 	if(recv(session->get_fd(), input_buffer, buflen, MSG_WAITALL) < 0)
 		return 0;
-	
+
 	// Controllo se il numero sequenziale è corretto
 	uint32_t seqnum = session->get_counterpart_nonce();
 	if(seqnum != ntohl(*((uint32_t*)input_buffer))){
@@ -769,12 +768,12 @@ int verify_cert(X509_STORE *store, X509 *cert){
 }
 
 // Calcola la dimensione del file
-long long int fsize() {
+unsigned int fsize() {
 	// Scorre fino alla fine del file in modo da calcolare la lunghezza in Byte
 	fs.seekg(0, fs.end);
 	// Conta il num di "caratteri" e quindi il numero di byte 
 	// Se la dim del file non può essere salvata in un intero -> ERRORE!!!
-	long long int fsize = fs.tellg(); 
+	unsigned int fsize = fs.tellg();
 	// Si riposiziona all'inizio del file
 	fs.seekg(0, fs.beg);
 	return fsize;
@@ -809,8 +808,19 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 		std::cerr<<"Errore apertura file."<<std::endl; 
 		return -1; 
 	}
-	long long int file_len = fsize();
+	// int è 4 byte -> max grandezza del file è 4.2 GB
+	unsigned int file_len = fsize();
+
+	//DEBUG
+	std::cout<<"Dimensione file da inviare: "<<file_len<<std::endl;
+	//DEBUG
+
 	std::string fl = std::to_string(file_len);
+
+	if(file_len == 0) {
+		std::cerr<<"Errore nel calcolo della grandezza del file"<<std::endl;
+		return -1;
+	}
 
 	// TODO: va bene sta cosa?? Ha senso convertire un intero a stringa?? Perchè altrimenti la encrypt non cripta numeri penso..
 	// invia la dimensione del file
@@ -860,7 +870,7 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	size_t fileNameLen = NULL;
 
 	char* fileSize = NULL;
-	int file_len;
+	unsigned int file_len;
 	size_t fileSizeLen;
 
 	// Ricevo la dimensione del file
@@ -871,6 +881,10 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	
 	// Converto in intero la dimensione del file
 	file_len = atoi(fileSize);
+
+	//DEBUG
+	std::cout << "Dimensione file ricevuta: " <<file_len<< std::endl;
+	//DEBUG
 	
 	char* chunk = NULL;
 	size_t chunkSize;

@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 #include "common_util.h"
-#include "messageDef.h"
+#include "utils.h"
 #include "server_util.h"
 
 EVP_PKEY* prvkey = NULL;
@@ -264,7 +264,6 @@ int main(int argc, char *argv[]){
 					// Recupero la struttura che contiene i dati relativi al client che ha inviato il messaggio
 					Session *client = get_client_by_fd(i);
 					
-					// Ricevo comando
 					ret = recv_command(message_type, client);
 					if(ret < 0){
 						quit_client(i, &master, false);
@@ -577,7 +576,7 @@ int main(int argc, char *argv[]){
 							std::cout << "Ricevuto comando list" << std::endl;
 							{
 								// Costruisco la lista
-								std::string list = list_files(SERVER_FOLDER_PATH);
+								std::string list = list_files(SERVER_FILES_PATH);
 								
 								// Aggiungo il carattere di terminazione alla stringa
 								const char* temp0 = list.c_str();

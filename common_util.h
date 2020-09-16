@@ -13,7 +13,7 @@
 #include <fstream>
 #include <regex>
 
-#include "messageDef.h"
+#include "utils.h"
 
 class CustomBN{
 	private:
@@ -94,7 +94,7 @@ int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session);
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen);
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int verify_cert(X509_STORE *store, X509 *cert);
-long long int fsize();
+unsigned int fsize();
 bool send_file_name(std::string, Session*);
 int receive_file_name(char** fileName, Session* session);
 int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session);
