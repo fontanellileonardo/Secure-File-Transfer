@@ -799,6 +799,11 @@ int receive_file_name(char** fileName, Session* session){
 	return fileNameLen;
 }
 
+void print_progress_bar(int total, int fragment){
+	std::cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	std::cout.flush();
+}
+
 // Ritorna -1 in caso di errore, 0 altrimenti
 int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session){	
 
@@ -841,8 +846,10 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
 			std::cerr << "Errore nell'invio del chunk" << std::endl;
 			return -1;
-		}				
+		}	
+		print_progress_bar(file_len/FRAGM_SIZE, i);
 	}
+	std::cout<<std::endl;
 	
 	if (file_len % FRAGM_SIZE != 0) {
 
@@ -908,6 +915,7 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 		fs.write(chunk, chunkSize);
 		delete[] chunk;
 		chunk = NULL;
+		print_progress_bar(file_len/FRAGM_SIZE, i);
   	}
 
 	if (file_len % FRAGM_SIZE != 0) {

@@ -97,5 +97,6 @@ int verify_cert(X509_STORE *store, X509 *cert);
 unsigned int fsize();
 bool send_file_name(std::string, Session*);
 int receive_file_name(char** fileName, Session* session);
+void print_progress_bar(int total, int fragment);
 int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session);
 int decryptAndWriteFile(int TCP_socket, std::string path,  Session* session);
