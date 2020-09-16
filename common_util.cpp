@@ -917,6 +917,7 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 		chunk = NULL;
 		print_progress_bar(file_len/FRAGM_SIZE, i);
   	}
+	std::cout<<std::endl;
 
 	if (file_len % FRAGM_SIZE != 0) {
 		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
