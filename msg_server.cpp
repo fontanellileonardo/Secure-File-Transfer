@@ -599,7 +599,11 @@ int main(int argc, char *argv[]){
 							char* fileName = NULL;
 							if(receive_file_name(&fileName, client) == -1) {
 								std::cerr << "Errore nella ricezione del nome del file" << std::endl;
-								return -1;
+								if(send_nack(client) == -1)
+									quit_client(i, &master, true);
+								if(fileName != NULL)
+									delete[] fileName;
+								continue;
 							}
 
 							// controlla se il file esiste
@@ -607,34 +611,18 @@ int main(int argc, char *argv[]){
 							filePath.append(fileName);
 							if(!checkFile(filePath)){
 								std::cout << "Il file richiesto dal client non esiste" << std::endl;
-								std::string nack = "false";
-
-								// Aggiungo il carattere di terminazione alla stringa
-								const char* temp0 = nack.c_str();
-								char temp1[nack.size() + 1];
-								strncpy((char*)temp1, temp0, nack.size());
-								temp1[nack.size()] = '\0';
-
-								if(send_data_encr(temp1, nack.size() + 1, client) == -1){
-									std::cerr << "Errore nell'invio del NACK" << std::endl;
-									terminate(-1);
-								};
+								if(send_nack(client) == -1){
+									quit_client(i, &master, true);
+									delete[] fileName;
+									continue;
+								}
 							}
 							else{
-								std::cout << "Prima dell'invio dell'ack" << std::endl;
-								std::string ack = "true";
-
-								// Aggiungo il carattere di terminazione alla stringa
-								const char* temp0 = ack.c_str();
-								char temp1[ack.size() + 1];
-								strncpy((char*)temp1, temp0, ack.size());
-								temp1[ack.size()] = '\0';
-
-								if(send_data_encr(temp1, ack.size() + 1, client) == -1){
-									std::cerr << "Errore nell'invio dell'ACK" << std::endl;
-									terminate(-1);
+								if(send_ack(client) == -1){
+									quit_client(i, &master, true);
+									delete[] fileName;
+									continue;
 								}
-
 								std::cout<<"File esistente"<<std::endl;
 								// inizializzo il buffer che conterrà il ciphertext
 								size_t dim_ct = ( FRAGM_SIZE / BLOCK_SIZE ) * BLOCK_SIZE;
@@ -645,10 +633,9 @@ int main(int argc, char *argv[]){
 								//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
 								if(encryptAndSendFile(ciphertext, i, filePath, client) == -1) {
 									std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
-									terminate(-1);
-								}
-
-								std::cout << "Download del file completato" << std::endl;
+									quit_client(i, &master, true);
+								} else 
+									std::cout << "Download del file completato" << std::endl;
 							
 								delete[] ciphertext;
 							}
@@ -664,8 +651,13 @@ int main(int argc, char *argv[]){
 							char* fileName = NULL;
 							if(receive_file_name(&fileName, client) == -1) {
 								std::cerr << "Errore nella ricezione del nome del file" << std::endl;
-								return -1;
+								send_nack(client);
+								if(fileName != NULL)
+									delete[] fileName;
+								continue;
 							}
+
+							send_ack(client);
 
 							std::cout << "Upload del file in corso..." << std::endl;
 
@@ -675,11 +667,8 @@ int main(int argc, char *argv[]){
 							// come iv utilizzo il seq num del client
 							if(decryptAndWriteFile(i, filePath, client) == -1){
 								std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
-								terminate(-1);
-							}
-
-							std::cout << "Upload del file completato" << std::endl;
-
+							} else
+								std::cout << "Upload del file completato" << std::endl;
 							delete[] fileName;
 						}
 							break;

@@ -123,3 +123,5 @@ client_files/*
 server_files/*
 client
 server
+
+.vscode

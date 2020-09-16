@@ -477,6 +477,7 @@ int main(int argc, char* argv[]){
 						file_command.clear();
 						std::cin.clear();
 						std::getline(std::cin, file_command);
+						
 						if(!verify_input_command(file_command) || file_command.at(0) == '.'){
 							std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
 							terminate(-1);
@@ -490,14 +491,26 @@ int main(int argc, char* argv[]){
 						}
 
 						// Invio il comando di upload
-						if (send_command(COMMAND_UPLOAD, session) != 1){
+						if (send_command(COMMAND_UPLOAD, session) == 0){
 							std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
 							terminate(-1);
 						}
 
 						// Invio il nome del file
-						if(!send_file_name(file_command, &session)) {
+						if(send_file_name(file_command, &session) == -1) {
 							std::cerr << "Errore nell'invio del nome del file. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+
+						//riceve l'ack se il file richiesto esiste, nack se non esiste
+						char* ack = NULL;
+						size_t dim_ack;
+						if(receive_data_encr(&ack, &dim_ack, &session)  == -1) {
+							std::cerr << "Il numero sequenziale ha raggiunto il limite. Terminazione..." << std::endl;
+							terminate(-1);
+						}
+						if( std::strncmp(ack, "false", 5) == 0){
+							std::cerr << "Nome del file non consentito" << std::endl;
 							terminate(-1);
 						}
 
@@ -517,7 +530,8 @@ int main(int argc, char* argv[]){
 						
 						delete[] ciphertext;	
 					}	
-					break;						
+					break;	
+
 				case COMMAND_DOWNLOAD:{
 					std::cout<<"Inserire nome del file"<<std::endl;
 					file_command.clear();
@@ -550,7 +564,7 @@ int main(int argc, char* argv[]){
 						terminate(-1);
 					}
 
-					if( std::strcmp(ack,"true") == 0) {
+					if( std::strncmp(ack, "true", 4) == 0) {
 
 						std::cout << "Download del file in corso..." << std::endl;
 

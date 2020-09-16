@@ -89,7 +89,9 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 int receive_size_hmac(Session* session, size_t* size);
 int send_data(unsigned int fd, const char* buffer, size_t buflen);
 int send_data_encr(const char* buffer, size_t buflen, Session* session);
+int send_ack(Session*);
 void send_error(unsigned int fd);
+int send_nack(Session*);
 int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session);
 int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned char** signature, size_t* signaturelen);
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);

@@ -669,12 +669,38 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	return (sent == output_buffer_len)?1:(-1);
 }
 
+int send_ack(Session* session) {
+	std::string ack = "true";
+	// Aggiungo il carattere di terminazione alla stringa
+	const char* temp0 = ack.c_str();
+	char temp1[ack.size() + 1];
+	strncpy((char*)temp1, temp0, ack.size());
+	temp1[ack.size()] = '\0';
+	if(send_data_encr(temp1, ack.size() + 1, session) == -1){
+		std::cerr << "Errore nell'invio dell'ACK" << std::endl;
+		return -1;
+	}
+	return 0;
+}
+
 void send_error(unsigned int fd){
 	uint32_t buflen_n = htonl(0);
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 }
 
-
+int send_nack(Session* session) {
+	std::string nack = "false";
+	// Aggiungo il carattere di terminazione alla stringa
+	const char* temp0 = nack.c_str();
+	char temp1[nack.size() + 1];
+	strncpy((char*)temp1, temp0, nack.size());
+	temp1[nack.size()] = '\0';
+	if(send_data_encr(temp1, nack.size() + 1, session) == -1){
+		std::cerr << "Errore nell'invio del NACK" << std::endl;
+		return -1;
+	}
+	return 0;
+}
 
 // seqnum generarlo con get_my_nonce, size = chuncki
 int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
@@ -782,16 +808,22 @@ unsigned int fsize() {
 	fs.seekg(0, fs.end);
 	// Conta il num di "caratteri" e quindi il numero di byte 
 	// Se la dim del file non può essere salvata in un intero -> ERRORE!!!
-	unsigned int fsize = fs.tellg();
+	int64_t fsize = fs.tellg();
+	if(fsize > UINT32_MAX || fsize == -1)
+		return 0;
 	// Si riposiziona all'inizio del file
 	fs.seekg(0, fs.beg);
-	return fsize;
+	return (unsigned int)fsize;
 }
 
 int send_file_name(std::string fileName, Session* session) {
 	// invia il nome del file (inviando prima la dim del messaggio che riceverà la controparte)
 	// +1 per includere il carattere di fine stringa
-	if(send_data_encr(fileName.c_str(), fileName.size() + 1, session) == -1) {
+	const char* temp0 = fileName.c_str();
+	char temp1[fileName.size() + 1];
+	strncpy((char*)temp1, temp0, fileName.size());
+	temp1[fileName.size()] = '\0';
+	if(send_data_encr(temp1, fileName.size() + 1, session) == -1) {
 		std::cerr<<"Errore nell'invio del nome del file"<<std::endl;
 		return -1;
 	}
@@ -803,6 +835,10 @@ int receive_file_name(char** fileName, Session* session){
 	// Ricevo il nome del file
 	if(receive_data_encr(&(*fileName), &fileNameLen, session) == -1){
 		std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+		return -1;
+	}
+	if(fileNameLen > 0 && *fileName[0] == '.'){
+		std::cerr << "Nome del file non valido" << std::endl;
 		return -1;
 	}
 	return fileNameLen;
@@ -824,8 +860,6 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 	}
 	// int è 4 byte -> max grandezza del file è 4.2 GB
 	unsigned int file_len = fsize();
-
-	//std::string fl = std::to_string(file_len);
 
 	if(file_len == 0) {
 		std::cerr<<"Errore nel calcolo della grandezza del file"<<std::endl;
