@@ -34,7 +34,7 @@
 
 #define MESSAGE_INVALID_COMMAND "Comando non valido"
 
-#define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !download <filename> -> Scarica il file con nome <filename> dal server\n !help -> Visualizza i comandi disponibili\n !list -> Mostra la lista dei file disponibili sul server e la loro dimensione\n !quit -> Termina il programma\n !upload <filename> -> Carica il file con nome <filename> sul server\n"
+#define MESSAGE_USER_COMMAND "\nSono disponibili i seguenti comandi:\n !download -> Scarica il file con nome <filename> dal server\n !help -> Visualizza i comandi disponibili\n !list -> Mostra la lista dei file disponibili sul server e la loro dimensione\n !quit -> Termina il programma\n !upload -> Carica il file con nome <filename> sul server\n"
 
 #define CA_CERTIFICATE_FILENAME "cas_dir/ca_cert.pem"
 #define CLIENT_CERTIFICATE_FILENAME "cas_dir/newcerts/01.pem"

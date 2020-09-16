@@ -28,6 +28,7 @@ Session *get_client_by_fd(unsigned int fd){
 }
 
 //pone l'utente in stato offline e chiude la connessione tcp
+// se notify_error = true comunica al client di chiudere la connessione
 void quit_client(unsigned int socket, fd_set* master, bool notify_error){
 	if(notify_error){
 		send_error(socket);
@@ -268,7 +269,8 @@ int main(int argc, char *argv[]){
 						continue; //passo al prossimo fd pronto
 					}
 					
-					fflush(stdout);//TODO: a cosa serve?
+					//fflush(stdout);
+
 					switch(message_type){
 						case HANDSHAKE:
 							// Ricevo i dati in ingresso (certificato)
@@ -606,7 +608,14 @@ int main(int argc, char *argv[]){
 							if(!checkFile(filePath)){
 								std::cout << "Il file richiesto dal client non esiste" << std::endl;
 								std::string nack = "false";
-								if(send_data_encr(nack.c_str(), nack.size() + 1, client) == -1){
+
+								// Aggiungo il carattere di terminazione alla stringa
+								const char* temp0 = nack.c_str();
+								char temp1[nack.size() + 1];
+								strncpy((char*)temp1, temp0, nack.size());
+								temp1[nack.size()] = '\0';
+
+								if(send_data_encr(temp1, nack.size() + 1, client) == -1){
 									std::cerr << "Errore nell'invio del NACK" << std::endl;
 									terminate(-1);
 								};
@@ -614,7 +623,14 @@ int main(int argc, char *argv[]){
 							else{
 								std::cout << "Prima dell'invio dell'ack" << std::endl;
 								std::string ack = "true";
-								if(send_data_encr(ack.c_str(), ack.size() + 1, client) == -1){
+
+								// Aggiungo il carattere di terminazione alla stringa
+								const char* temp0 = ack.c_str();
+								char temp1[ack.size() + 1];
+								strncpy((char*)temp1, temp0, ack.size());
+								temp1[ack.size()] = '\0';
+
+								if(send_data_encr(temp1, ack.size() + 1, client) == -1){
 									std::cerr << "Errore nell'invio dell'ACK" << std::endl;
 									terminate(-1);
 								}

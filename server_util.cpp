@@ -51,9 +51,6 @@ int recv_command(uint8_t &message_type, Session* client){
 	memset(handshake_command, 0, command_len);
 	if(memcmp(command, handshake_command, command_len) == 0){
 		message_type = HANDSHAKE;
-		//  Debug
-		std::cout << "HANDSHAKE" << std::endl;
-		// /Debug
 		return 1;
 	}
 	

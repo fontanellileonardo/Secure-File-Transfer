@@ -95,8 +95,8 @@ int sign_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* prvkey, unsigned c
 int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, int signature_len, EVP_PKEY* pubkey);
 int verify_cert(X509_STORE *store, X509 *cert);
 unsigned int fsize();
-bool send_file_name(std::string, Session*);
+int send_file_name(std::string, Session*);
 int receive_file_name(char** fileName, Session* session);
-void print_progress_bar(int total, int fragment);
+void print_progress_bar(int total, unsigned int fragment);
 int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session);
 int decryptAndWriteFile(int TCP_socket, std::string path,  Session* session);

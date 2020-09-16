@@ -477,7 +477,7 @@ int main(int argc, char* argv[]){
 						file_command.clear();
 						std::cin.clear();
 						std::getline(std::cin, file_command);
-						if(!verify_input_command(file_command)){
+						if(!verify_input_command(file_command) || file_command.at(0) == '.'){
 							std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
 							terminate(-1);
 						} 
@@ -525,7 +525,7 @@ int main(int argc, char* argv[]){
 					std::getline(std::cin, file_command);
 					
 					// Controllo caratteri inseriti siano validi
-					if(!verify_input_command(file_command)){
+					if(!verify_input_command(file_command) || file_command.at(0) == '.'){
 						std::cerr << "Inserimento di caratteri non consentiti" << std::endl;
 						terminate(-1);
 					}
@@ -576,9 +576,9 @@ int main(int argc, char* argv[]){
 					break;
 			}
 		}
-		
+		// Se arriva un messaggio dal server è sicuramente una chiusura
 		if(FD_ISSET(TCP_socket, &read_fds)){// Input dalla rete
-			std::cout << "Disconnesso dal sever" << std::endl;
+			std::cout << "Disconnesso dal server" << std::endl;
 			terminate(0);
 		}
 	}

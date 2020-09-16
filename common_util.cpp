@@ -16,10 +16,14 @@ Session::Session(unsigned int fd){
 }
 
 Session::~Session(){
-	if(key_encr != NULL)
+	if(key_encr != NULL) {
+		memset(key_encr, 0, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
 		delete[] key_encr;
-	if(key_auth != NULL)
+	}	
+	if(key_auth != NULL) {
+		memset(key_auth, 0, EVP_CIPHER_key_length(EVP_aes_128_cbc()));
 		delete[] key_auth;
+	}
 	if(counterpart_pubkey != NULL)
 		EVP_PKEY_free(counterpart_pubkey);
 }
@@ -252,6 +256,7 @@ int encrypt_asym(char* plaintext, size_t plaintextlen, EVP_PKEY* pubkey, const E
 	int outlen, cipherlen;
 	*iv = new unsigned char[EVP_CIPHER_iv_length(type)];
 	
+	// seeding del generatore di numeri random usato per la key (da SealInit)
 	if(RAND_poll() != 1){
 		return -1;
 	}
@@ -747,6 +752,7 @@ int sign_asym_verify(unsigned char* msg, int msg_len, unsigned char* signature, 
 	return ret;
 }
 
+// ritorna 1:tutto apposto, 0:certificato non corretto, -1:errore 
 int verify_cert(X509_STORE *store, X509 *cert){
 	X509_STORE_CTX* cert_ctx = X509_STORE_CTX_new();
 	if(cert_ctx == NULL){
@@ -782,14 +788,14 @@ unsigned int fsize() {
 	return fsize;
 }
 
-bool send_file_name(std::string fileName, Session* session) {
+int send_file_name(std::string fileName, Session* session) {
 	// invia il nome del file (inviando prima la dim del messaggio che riceverà la controparte)
 	// +1 per includere il carattere di fine stringa
 	if(send_data_encr(fileName.c_str(), fileName.size() + 1, session) == -1) {
 		std::cerr<<"Errore nell'invio del nome del file"<<std::endl;
-		return false;
+		return -1;
 	}
-	return true;
+	return 0;
 }
 
 int receive_file_name(char** fileName, Session* session){
@@ -802,7 +808,7 @@ int receive_file_name(char** fileName, Session* session){
 	return fileNameLen;
 }
 
-void print_progress_bar(int total, int fragment){
+void print_progress_bar(int total, unsigned int fragment){
 	std::cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
 	std::cout.flush();
 }
@@ -819,20 +825,16 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 	// int è 4 byte -> max grandezza del file è 4.2 GB
 	unsigned int file_len = fsize();
 
-	//DEBUG
-	std::cout<<"Dimensione file da inviare: "<<file_len<<std::endl;
-	//DEBUG
-
-	std::string fl = std::to_string(file_len);
+	//std::string fl = std::to_string(file_len);
 
 	if(file_len == 0) {
 		std::cerr<<"Errore nel calcolo della grandezza del file"<<std::endl;
 		return -1;
 	}
+	unsigned int ufile_len = htonl(file_len);
 
-	// TODO: va bene sta cosa?? Ha senso convertire un intero a stringa?? Perchè altrimenti la encrypt non cripta numeri penso..
 	// invia la dimensione del file
-	if(send_data_encr(fl.c_str(), fl.size(), session) == -1) {
+	if(send_data_encr((char*) &ufile_len, sizeof(ufile_len), session) == -1) {
 		std::cerr<<"Errore nell'invio della dimensione del file"<<std::endl;
 		return -1;
 	}
@@ -840,10 +842,14 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 	// conterrà una porzione del file da inviare
 	char* buffer = new char[FRAGM_SIZE];
 
-	for( int i = 0; i < (file_len/FRAGM_SIZE); i++){
+	for(unsigned int i = 0; i < (file_len/FRAGM_SIZE); i++){
 
 		// Leggo il frammento di file da inviare
 		fs.read(buffer,FRAGM_SIZE);
+		if(fs.fail()) {
+			std::cerr << "Errore nella scrittura del file" << std::endl;
+			return -1;
+		}
 
 		// Invia il chunk
 		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
@@ -858,6 +864,10 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 
 		// leggo l'ultimo frammento da inviare
 		fs.read((char*)buffer,(file_len%FRAGM_SIZE));
+		if(fs.fail()) {
+			std::cerr << "Errore nella scrittura del file" << std::endl;
+			return -1;
+		}
 
 		// invio ultimo frammento
 		if(send_data_encr(buffer, (file_len%FRAGM_SIZE), session) == -1) {
@@ -869,15 +879,12 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 	fs.close();
 
 	// free the memory
-	memset(buffer, 0, FRAGM_SIZE);
 	delete[] buffer;
 	
 	return 0;
 }
 
 int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
-	
-	size_t fileNameLen = NULL;
 
 	char* fileSize = NULL;
 	unsigned int file_len;
@@ -890,11 +897,7 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	} 
 	
 	// Converto in intero la dimensione del file
-	file_len = atoi(fileSize);
-
-	//DEBUG
-	std::cout << "Dimensione file ricevuta: " <<file_len<< std::endl;
-	//DEBUG
+	file_len = ntohl(*((unsigned int*)fileSize));
 	
 	char* chunk = NULL;
 	size_t chunkSize;
@@ -908,7 +911,6 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 		return -1; 
 	}
 
-	int ret;
 	for(i = 0; i < (file_len/FRAGM_SIZE ); i++) {
 		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
 			std::cerr << "Errore nella ricezione del chunk" << std::endl;
@@ -916,6 +918,10 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 		}
 		
 		fs.write(chunk, chunkSize);
+		if(fs.fail()) {
+			std::cerr << "Errore nella scrittura del file" << std::endl;
+			return -1;
+		}
 		delete[] chunk;
 		chunk = NULL;
 		print_progress_bar(file_len/FRAGM_SIZE, i);
@@ -928,6 +934,10 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 			return -1;
 		}
 		fs.write(chunk, chunkSize);
+		if(fs.fail()) {
+			std::cerr << "Errore nella scrittura del file" << std::endl;
+			return -1;
+		}
 	}
 
 	// Chiudo il fstream e dealloco i puntatori
