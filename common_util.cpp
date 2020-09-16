@@ -1,5 +1,7 @@
 #include "common_util.h"
 
+std::fstream fs;
+
 Session::Session(unsigned int fd){
 	this->fd = fd;
 	key_auth = NULL;
@@ -143,6 +145,23 @@ int Session::set_key_encr(const EVP_CIPHER *type, char* key){
 	key_encr = new char[EVP_CIPHER_key_length(type)];
 	memcpy(key_encr, key, EVP_CIPHER_key_length(type));
 	return 0;
+}
+
+bool verify_input_command(std::string buf){
+	std::regex b("[A-Za-z0-9.-_!]+");
+	if(std::regex_match(buf, b))
+		return true;
+	else 
+		return false;
+}
+
+bool checkFile(std::string filePath){
+	if (FILE *file = fopen(filePath.c_str(), "r")) {
+        fclose(file);
+        return true;
+    } else {
+        return false;
+    }   
 }
 
 int create_store(X509_STORE **store, X509 *CA_cert, X509_CRL *crl){
@@ -483,7 +502,6 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	ssize_t ret = receive_size_hmac(session, &buflen);
 	if(ret < 0)
 		return ret;
-	
 	// Alloco il buffer per i dati in ingresso
 	char input_buffer[buflen];
 	
@@ -512,7 +530,8 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	}
 	
 	// Controllo l'hash
-	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), (unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
+	if(hash_verify((unsigned char*)input_buffer, (buflen - EVP_MD_size(EVP_sha256())), 
+		(unsigned char*)(input_buffer + buflen - EVP_MD_size(EVP_sha256())), session) != 1){
 		std::cerr << "Errore hash" << std::endl;
 		return -1;
 	}
@@ -524,7 +543,8 @@ int receive_data_encr(char** plaintext, size_t* plaintext_len, Session* session)
 	if(!session->get_iv((char*)iv_buffer, EVP_CIPHER_iv_length(EVP_aes_128_cbc())))
 		return -1;
 	
-	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), (unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
+	if(decrypt_symm((unsigned char*)(input_buffer + sizeof(seqnum)), (buflen - (sizeof(seqnum) + EVP_MD_size(EVP_sha256()))), 
+		(unsigned char**)plaintext, plaintext_len, EVP_aes_128_cbc(), key_encr_buffer, iv_buffer) < 0){
 		std::cerr << "Errore decrypt" << std::endl;
 		return -1;
 	}
@@ -539,7 +559,7 @@ int receive_size_hmac(Session* session, size_t* size){
 	// Ricevo i byte
 	if(recv(session->get_fd(), input_buffer, buflen, MSG_WAITALL) < 0)
 		return 0;
-	
+
 	// Controllo se il numero sequenziale è corretto
 	uint32_t seqnum = session->get_counterpart_nonce();
 	if(seqnum != ntohl(*((uint32_t*)input_buffer))){
@@ -595,7 +615,8 @@ int send_data_encr(const char* buffer, size_t buflen, Session* session){
 	// Cifro il messggio (contenuto in buffer)
 	char* ciphertext_buffer;
 	size_t ciphertext_buffer_len;
-	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, &ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
+	if(encrypt_symm((unsigned char*)buffer, buflen, (unsigned char**)&ciphertext_buffer, 
+		&ciphertext_buffer_len, EVP_aes_128_cbc(), (unsigned char*)key_encr_buffer, (unsigned char*)iv_buffer) < 0)
 		return 0;
 	
 	// Copio il numero sequenziale e messaggio nel buffer su cui verrà calcolato l'hash
@@ -648,6 +669,9 @@ void send_error(unsigned int fd){
 	send(fd, &buflen_n, sizeof(buflen_n), 0);
 }
 
+
+
+// seqnum generarlo con get_my_nonce, size = chuncki
 int send_size_hmac(uint32_t seqnum, uint32_t size, Session* session){
 	// Copio il numero sequenziale e size nel buffer su cui verrà calcolato l'hash
 	size_t to_be_hashed_len = sizeof(seqnum) + sizeof(size);
@@ -744,4 +768,172 @@ int verify_cert(X509_STORE *store, X509 *cert){
 	
 	X509_STORE_CTX_free(cert_ctx);
 	return 1;
+}
+
+// Calcola la dimensione del file
+unsigned int fsize() {
+	// Scorre fino alla fine del file in modo da calcolare la lunghezza in Byte
+	fs.seekg(0, fs.end);
+	// Conta il num di "caratteri" e quindi il numero di byte 
+	// Se la dim del file non può essere salvata in un intero -> ERRORE!!!
+	unsigned int fsize = fs.tellg();
+	// Si riposiziona all'inizio del file
+	fs.seekg(0, fs.beg);
+	return fsize;
+}
+
+bool send_file_name(std::string fileName, Session* session) {
+	// invia il nome del file (inviando prima la dim del messaggio che riceverà la controparte)
+	// +1 per includere il carattere di fine stringa
+	if(send_data_encr(fileName.c_str(), fileName.size() + 1, session) == -1) {
+		std::cerr<<"Errore nell'invio del nome del file"<<std::endl;
+		return false;
+	}
+	return true;
+}
+
+int receive_file_name(char** fileName, Session* session){
+	size_t fileNameLen;
+	// Ricevo il nome del file
+	if(receive_data_encr(&(*fileName), &fileNameLen, session) == -1){
+		std::cerr << "Errore nella ricezione del nome del file" << std::endl;
+		return -1;
+	}
+	return fileNameLen;
+}
+
+void print_progress_bar(int total, int fragment){
+	std::cout << "\r" << "[Fragment " << fragment + 1 << " of " << total << "]";
+	std::cout.flush();
+}
+
+// Ritorna -1 in caso di errore, 0 altrimenti
+int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session){	
+
+	//Calcola la grandezza del file
+	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
+	if(!fs) { 
+		std::cerr<<"Errore apertura file."<<std::endl; 
+		return -1; 
+	}
+	// int è 4 byte -> max grandezza del file è 4.2 GB
+	unsigned int file_len = fsize();
+
+	//DEBUG
+	std::cout<<"Dimensione file da inviare: "<<file_len<<std::endl;
+	//DEBUG
+
+	std::string fl = std::to_string(file_len);
+
+	if(file_len == 0) {
+		std::cerr<<"Errore nel calcolo della grandezza del file"<<std::endl;
+		return -1;
+	}
+
+	// TODO: va bene sta cosa?? Ha senso convertire un intero a stringa?? Perchè altrimenti la encrypt non cripta numeri penso..
+	// invia la dimensione del file
+	if(send_data_encr(fl.c_str(), fl.size(), session) == -1) {
+		std::cerr<<"Errore nell'invio della dimensione del file"<<std::endl;
+		return -1;
+	}
+	
+	// conterrà una porzione del file da inviare
+	char* buffer = new char[FRAGM_SIZE];
+
+	for( int i = 0; i < (file_len/FRAGM_SIZE); i++){
+
+		// Leggo il frammento di file da inviare
+		fs.read(buffer,FRAGM_SIZE);
+
+		// Invia il chunk
+		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
+			std::cerr << "Errore nell'invio del chunk" << std::endl;
+			return -1;
+		}	
+		print_progress_bar(file_len/FRAGM_SIZE, i);
+	}
+	std::cout<<std::endl;
+	
+	if (file_len % FRAGM_SIZE != 0) {
+
+		// leggo l'ultimo frammento da inviare
+		fs.read((char*)buffer,(file_len%FRAGM_SIZE));
+
+		// invio ultimo frammento
+		if(send_data_encr(buffer, (file_len%FRAGM_SIZE), session) == -1) {
+			std::cerr << "Errore nell'invio dell'ultimo frammento" << std::endl;
+			return -1;
+		}  
+    }
+	
+	fs.close();
+
+	// free the memory
+	memset(buffer, 0, FRAGM_SIZE);
+	delete[] buffer;
+	
+	return 0;
+}
+
+int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
+	
+	size_t fileNameLen = NULL;
+
+	char* fileSize = NULL;
+	unsigned int file_len;
+	size_t fileSizeLen;
+
+	// Ricevo la dimensione del file
+	if(receive_data_encr(&fileSize, &fileSizeLen, session) == -1){
+		std::cerr << "Errore nella ricezione della dimensione del file" << std::endl;
+		return -1;
+	} 
+	
+	// Converto in intero la dimensione del file
+	file_len = atoi(fileSize);
+
+	//DEBUG
+	std::cout << "Dimensione file ricevuta: " <<file_len<< std::endl;
+	//DEBUG
+	
+	char* chunk = NULL;
+	size_t chunkSize;
+	
+	unsigned int i;
+
+	std::fstream fs;
+	fs.open(path.c_str(), std::fstream::out | std::fstream::binary);
+	if(!fs) {
+		std::cerr<<"Errore apertura file."<<std::endl; 
+		return -1; 
+	}
+
+	int ret;
+	for(i = 0; i < (file_len/FRAGM_SIZE ); i++) {
+		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
+			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			return -1;
+		}
+		
+		fs.write(chunk, chunkSize);
+		delete[] chunk;
+		chunk = NULL;
+		print_progress_bar(file_len/FRAGM_SIZE, i);
+  	}
+	std::cout<<std::endl;
+
+	if (file_len % FRAGM_SIZE != 0) {
+		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
+			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			return -1;
+		}
+		fs.write(chunk, chunkSize);
+	}
+
+	// Chiudo il fstream e dealloco i puntatori
+	fs.close();
+	delete[] chunk;
+	delete[] fileSize;
+
+	return 0;	
 }

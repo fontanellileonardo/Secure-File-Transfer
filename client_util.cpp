@@ -1,19 +1,23 @@
 #include "client_util.h"
 
 //identifica il comando ricevuto dall'utente da tastiera
-uint8_t identifyCommand(char* command){
+uint8_t identifyCommand(std::string command){
 
-	if(strlen(command) != 6 && strncmp(command, "!list", 5)== 0){
+	if(command == "!list"){
 		return COMMAND_LIST;
 	}
-	if(strlen(command) != 6 && strncmp(command, "!help", 5)== 0){
+	if(command == "!help"){
 		return COMMAND_HELP;
 	}
-	if(strlen(command) != 6 && strncmp(command, "!quit", 5)== 0){
+	if(command == "!quit"){
 		return COMMAND_QUIT;
 	}
-	if(strlen(command) != 10 && strncmp(command, "!download", 9) == 0)
+	if(command == "!upload"){
+		return COMMAND_UPLOAD;
+	}
+	if(command == "!download"){
 		return COMMAND_DOWNLOAD;
+	}
 	return COMMAND_INVALID;
 }
 
