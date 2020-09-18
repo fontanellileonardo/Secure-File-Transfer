@@ -100,5 +100,5 @@ unsigned int fsize();
 int send_file_name(std::string, Session*);
 int receive_file_name(char** fileName, Session* session);
 void print_progress_bar(int total, unsigned int fragment);
-int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session);
-int decryptAndWriteFile(int TCP_socket, std::string path,  Session* session);
+int encryptAndSendFile(std::string path, Session* session);
+int decryptAndWriteFile(std::string path,  Session* session);

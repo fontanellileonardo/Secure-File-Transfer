@@ -29,6 +29,7 @@ void print_prompt(){
 	return;
 }
 
+// Ritorna 0 in caso di errore, 1 altrimenti
 int send_command(uint8_t command, Session &session){
 	unsigned char key_encr_buffer[EVP_CIPHER_key_length(EVP_aes_128_cbc())];
 	session.get_key_encr((char*)key_encr_buffer);

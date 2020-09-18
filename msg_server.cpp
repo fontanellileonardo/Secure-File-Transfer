@@ -631,7 +631,7 @@ int main(int argc, char *argv[]){
 								std::cout << "Download del file in corso..." << std::endl;
 
 								//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
-								if(encryptAndSendFile(ciphertext, i, filePath, client) == -1) {
+								if(encryptAndSendFile(filePath, client) == -1) {
 									std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
 									quit_client(i, &master, true);
 								} else 
@@ -665,7 +665,7 @@ int main(int argc, char *argv[]){
 							filePath.append(fileName);
 
 							// come iv utilizzo il seq num del client
-							if(decryptAndWriteFile(i, filePath, client) == -1){
+							if(decryptAndWriteFile(filePath, client) == -1){
 								std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
 							} else
 								std::cout << "Upload del file completato" << std::endl;

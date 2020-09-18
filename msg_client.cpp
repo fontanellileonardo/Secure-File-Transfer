@@ -521,7 +521,7 @@ int main(int argc, char* argv[]){
 
 
 						//Gestisce l'invio della dimensione del file, della dimensione dei chunk e dei chunk
-						if(encryptAndSendFile(ciphertext, TCP_socket, filePath, &session) == -1) {
+						if(encryptAndSendFile(filePath, &session) == -1) {
 							std::cerr << "Errore nell'invio del file. Terminazione..." << std::endl;
 							terminate(-1);
 						}
@@ -571,7 +571,7 @@ int main(int argc, char* argv[]){
 						std::string filePath = CLIENT_FILES_PATH;
 						filePath.append(file_command);
 						// Ricevo il file richiesto
-						if(decryptAndWriteFile(TCP_socket, filePath, &session) == -1 ) {
+						if(decryptAndWriteFile(filePath, &session) == -1 ) {
 							std::cerr << "Errore nella ricezione del file. Terminazione..." << std::endl;
 							terminate(-1);
 						}

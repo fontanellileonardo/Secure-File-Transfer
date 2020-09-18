@@ -360,9 +360,11 @@ std::string get_file_size_string(std::string filename){
 
 // Scrive buflen byte pseudocasuali in buffer
 int get_random(char* buffer, size_t buflen){
+	// Fa il seed in maniera automatica del PRNG
 	if(RAND_poll() != 1){
 		return -1;
 	}
+	// Genera un numero intero randomico
 	if(RAND_bytes((unsigned char*)buffer, buflen) != 1){
 		return -1;
 	}
@@ -438,7 +440,7 @@ int load_cert(std::string filename, X509 **cert){
 	return 0;
 }
 
-//Carica il file CRL
+//Carica il file CRL (Certificate Revocation List)
 int load_crl(std::string filename, X509_CRL** crl){
 	FILE* file = fopen(filename.c_str(), "r");
 	if(!file){
@@ -850,12 +852,12 @@ void print_progress_bar(int total, unsigned int fragment){
 }
 
 // Ritorna -1 in caso di errore, 0 altrimenti
-int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string path, Session* session){	
+int encryptAndSendFile(std::string path, Session* session){	
 
 	//Calcola la grandezza del file
 	fs.open(path.c_str(), std::fstream::in | std::fstream::binary);
 	if(!fs) { 
-		std::cerr<<"Errore apertura file."<<std::endl; 
+		std::cerr<<"Errore apertura file."<<std::endl;
 		return -1; 
 	}
 	// int è 4 byte -> max grandezza del file è 4.2 GB
@@ -882,12 +884,14 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 		fs.read(buffer,FRAGM_SIZE);
 		if(fs.fail()) {
 			std::cerr << "Errore nella scrittura del file" << std::endl;
+			delete[] buffer;
 			return -1;
 		}
 
 		// Invia il chunk
 		if(send_data_encr(buffer, FRAGM_SIZE, session) == -1) {
 			std::cerr << "Errore nell'invio del chunk" << std::endl;
+			delete[] buffer;
 			return -1;
 		}	
 		print_progress_bar(file_len/FRAGM_SIZE, i);
@@ -900,12 +904,14 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 		fs.read((char*)buffer,(file_len%FRAGM_SIZE));
 		if(fs.fail()) {
 			std::cerr << "Errore nella scrittura del file" << std::endl;
+			delete[] buffer;
 			return -1;
 		}
 
 		// invio ultimo frammento
 		if(send_data_encr(buffer, (file_len%FRAGM_SIZE), session) == -1) {
 			std::cerr << "Errore nell'invio dell'ultimo frammento" << std::endl;
+			delete[] buffer;
 			return -1;
 		}  
     }
@@ -918,7 +924,7 @@ int encryptAndSendFile(unsigned char * ciphertext, int TCP_socket, std::string p
 	return 0;
 }
 
-int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
+int decryptAndWriteFile(std::string path, Session* session){
 
 	char* fileSize = NULL;
 	unsigned int file_len;
@@ -927,6 +933,8 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	// Ricevo la dimensione del file
 	if(receive_data_encr(&fileSize, &fileSizeLen, session) == -1){
 		std::cerr << "Errore nella ricezione della dimensione del file" << std::endl;
+		if(fileSize != NULL)
+			delete[] fileSize;
 		return -1;
 	} 
 	
@@ -942,18 +950,26 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	fs.open(path.c_str(), std::fstream::out | std::fstream::binary);
 	if(!fs) {
 		std::cerr<<"Errore apertura file."<<std::endl; 
+		if(fileSize != NULL)
+			delete[] fileSize;
 		return -1; 
 	}
 
 	for(i = 0; i < (file_len/FRAGM_SIZE ); i++) {
 		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
 			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			if(fileSize != NULL)
+				delete[] fileSize;
 			return -1;
 		}
 		
 		fs.write(chunk, chunkSize);
 		if(fs.fail()) {
 			std::cerr << "Errore nella scrittura del file" << std::endl;
+			if(fileSize != NULL)
+				delete[] fileSize;
+			if(chunk != NULL)
+				delete[] chunk;
 			return -1;
 		}
 		delete[] chunk;
@@ -965,11 +981,17 @@ int decryptAndWriteFile(int TCP_socket, std::string path, Session* session){
 	if (file_len % FRAGM_SIZE != 0) {
 		if(receive_data_encr(&chunk, &chunkSize, session) == -1){
 			std::cerr << "Errore nella ricezione del chunk" << std::endl;
+			if(fileSize != NULL)
+				delete[] fileSize;
 			return -1;
 		}
 		fs.write(chunk, chunkSize);
 		if(fs.fail()) {
 			std::cerr << "Errore nella scrittura del file" << std::endl;
+			if(fileSize != NULL)
+				delete[] fileSize;
+			if(chunk != NULL)
+				delete[] chunk;
 			return -1;
 		}
 	}
